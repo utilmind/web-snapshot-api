@@ -61,7 +61,7 @@ app.use((error, req, res, next) => {
         width: (float) Default is DEF_PAGE_WIDTH.
         height: (float) Default is DEF_PAGE_HEIGHT.
         full_page: (bool) Default is true/1. Set to false/0 to disable.
-        format: (string) Default is DEF_IMAGE_FORMAT. Can be eighter PNG or JPG. Case insensitive. Filename created with lowercase extension.
+        format: (string) Default is DEF_IMAGE_FORMAT. Can be eighter PNG, JPG or WEBP. Case insensitive. Filename created with lowercase extension.
 */
 app.post('/snapshot', (req, res) => {
     const data = req.body,
