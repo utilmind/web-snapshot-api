@@ -130,7 +130,7 @@ app.post('/snapshot', (req, res) => {
     })();
 });
 
-// Запуск сервера
+// Start server
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
 });
