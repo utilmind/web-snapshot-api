@@ -19,4 +19,4 @@ NodeJS + Express framework
 
 ## Returns
  * Success: HTTP status 200. JSON { url: returns original URL, snapshot: filename }.
- * Failure: HTTP status 400. JSON { error: reason }.
+ * Failure: HTTP status 400 (or another 4XX/5XX). JSON { error: reason }.
