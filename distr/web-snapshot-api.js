@@ -8,6 +8,9 @@ const express = require('express'),
     app = express(),
     port = 3000,
 
+
+    // CONFIGURATION
+    // -------------
     DEF_IMAGE_FORMAT = 'jpg',
     SUPPORTED_IMAGE_FORMATS = ['jpg', 'png', 'webp'], // other formats may require workarounds: https://screenshotone.com/blog/taking-screenshots-with-puppeteer-in-gif-jp2-tiff-avif-heif-or-svg-format/
 
@@ -21,6 +24,7 @@ const express = require('express'),
 
 
     // PRIVATE FUNCS
+    // -------------
     // same as parseFloat, but returns 0 if parseFloat returns non-numerical value
     fl0at = (v, def) => isNaN(v = parseFloat(v))
                             ? (undefined !== def ? def : 0) // "" is good value too. Don't replace with 0 if "" set.
