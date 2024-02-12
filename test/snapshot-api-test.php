@@ -7,6 +7,8 @@ mdb_api_client::$request_timeout = 20;
 
 $api_url = 'http://localhost:3000/snapshot/';
 $snapshot_url = 'http://fuckingunexistingdomain/';
+//$snapshot_url = 'http://silkcards.com/';
+$snapshot_url = 'http://utilmind.com/';
 
 
 // PRIVATE FUNCS

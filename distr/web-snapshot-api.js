@@ -83,51 +83,66 @@ app.post('/snapshot', (req, res) => {
         format.toLowerCase().replace(/[^a-z\d]/g, ''); // strip all non-latin and non-digit characters. But mostly it used to trim possible leading dot.
         if ('jpeg' === format) format = 'jpg';
         if (-1 === SUPPORTED_IMAGE_FORMATS.indexOf(format)) {
-            res.status(400).json({ error: `Unsupported image format. Request either: ${SUPPORTED_IMAGE_FORMATS.join(', ')}.` });
+            res.status(400).json({ url, error: `Unsupported image format. Request either: ${SUPPORTED_IMAGE_FORMATS.join(', ')}.` });
             return;
         }
     }
 
-    (async () => {
-        const fn = path.join(__dirname, uuidv4() + '.' + (format || DEF_IMAGE_FORMAT)),
-
-            browser = await puppeteer.launch({
+    puppeteer
+        .launch({
                 headless: 'new',
                 ignoreHTTPSErrors: true,
                 defaultViewport: {
                     width,
                     height
                 },
-            }),
+            }).then(browser => browser.newPage()
+                .then(page => {
+                    // go to target website
+                    console.log('Browsing to', url);
+                    page.goto(url, {
+                        // wait for content to load
+                        waitUntil: 'networkidle0' //'domcontentloaded',
+                        //timeout: 0
+                    }).then(() => {
+                        console.log('Successful navigation to', url);
+                        const fn = path.join(__dirname, uuidv4() + '.' + (format || DEF_IMAGE_FORMAT));
 
-            // create a new in headless chrome
-            page = await browser.newPage();
+                        // take a screenshot
+                        page.screenshot({
+                            path: fn,
+                            fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
+                        }).then(() => {
+                            console.log('SNAPSHOT SUCCESS');
+                            res.status(200).json({ url, snapshot: fn });
+                        }).catch((lRes) => {
+                            console.log('SNAPSHOT FAILURE');
+                            console.log(lRes);
 
-        // go to target website
-        console.log('Browsing to', url);
-        await page.goto(url, {
-            // wait for content to load
-            waitUntil: 'networkidle0' //'domcontentloaded',
-            //timeout: 0
-        }).then(() => {
-            console.log('Success');
-        }).catch((res) => {
-            console.log('Failure', res);
-            // TODO: write into log
-        });
+                            // TODO: think about error 507 Insufficient Storage
+                            res.status(507).json({ url, error: 'Insufficient Storage' });
+                        }).finally(() => {
+                            browser.close();
+                        });
 
-        // take a screenshot
-        await page.screenshot({
-            path: fn,
-            fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
-        });
+                    }).catch(lRes => {
+                        console.log('NAVIGATION FAILURE');
+                        console.log(lRes);
+                        // TODO: write into log
 
-        //todos.push(newTodo);
-        res.status(200).json({ url, snapshot: fn });
-
-        //dispose browser
-        await browser.close();
-    })();
+                        browser.close();
+                        res.status(500).json({ url, error: 'Failed to load URL.' });
+                    });
+                })
+                // if new page can't be created for any reason
+                .catch(lRes => {
+                    browser.close();
+                    res.status(500).json({ url, error: 'Failed to open new page.' });
+                })
+            )
+            .catch(lRes => {
+                res.status(500).json({ url, error: 'Failed to launch browser.' });
+            });
 });
 
 // Start server
