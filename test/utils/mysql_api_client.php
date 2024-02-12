@@ -67,9 +67,19 @@ class mdb_api_client extends mdb_data {
         }
 
 
-        // Returns HTTP STATUS on success and NULL on error, if $need_headers is FALSE,
-        //   ...or [$http_status, $headers] if $need_headers is TRUE.
-        // Can be used to check, whether some downloadable file uploaded / whether web page exists. (Follows all redirects.)
+        /* Returns integer (positive HTTP STATUS CODE on success
+                         OR negative cURL ERROR CODE on error), if $need_headers is FALSE,
+             ...or array [$http_status, $headers], if $need_headers is TRUE.
+           --
+           CAUTION! When $is_need_headers is FALSE it returns integer value in both cases, in case of success (HTTP STATUS) or in case of error (cURL error code).
+           Error codes are NEGATIVE representation of standard cURL error codes, described on https://curl.se/libcurl/c/libcurl-errors.html
+           Additionally you should expect that successful HTTP status codes starts from 200. All values less than 200 are errors anyway.
+                                                                                             -------------------------------------------
+           Alternatively, either request headers as result (so successfull result will be an array, int is error) OR use different implementation.
+             * Keep this method simple. In most cases we just need it to check whether it retuns certain HTTP status.
+           --
+           Use case example: check (following all redirects), whether some downloadable file uploaded / whether web page exists and returns certain HTTP STATUS, like (int)200.
+        */
         public static function query_url_head($url,
                                               $add_request_headers = [],
                                               $need_response_headers = false,
@@ -81,18 +91,31 @@ class mdb_api_client extends mdb_data {
                 curl_setopt($ch, CURLOPT_NOBODY, true);
 
                 // Execute the request.
-                $response = curl_exec($ch);  // AK: $response_body can be empty string. While it's not FALSE it's okay. Unusual but normal. It's valid to respond with empty body.
+                $response = curl_exec($ch);  // AK: $response can be empty string. While it's not FALSE it's okay. Unusual but normal. It's valid to respond with empty body.
 
                 // Check if cURL request was successful
-                if (false === $response) { // FAILURE
-                    return curl_errno($ch); // possible error codes: https://curl.se/libcurl/c/libcurl-errors.html
+                if (false === $response) { // FAILURE. Return negative error code
+                    return -curl_errno($ch); // possible error codes: https://curl.se/libcurl/c/libcurl-errors.html ATTN! Use abs() to get unsigned error code.
 
                     /* // How to handle errors:
-                    if (!is_array($result)) {
-                        if (CURLE_OPERATION_TIMEDOUT === $result) {
-                            echo 'The request timed out.';
-                        }else { // Handle other cURL errors
-                            echo 'cURL error: ' . $result;
+                    if (!is_array($result) && ($error_code = abs($result))) {
+                        switch ($error_code) {
+                            case CURLE_OPERATION_TIMEDOUT:
+                                echo 'Request timed out.';
+                                break;
+                            case CURLE_COULDNT_RESOLVE_HOST:
+                                printf('Failed to resolve hostname \'%s\'.', hostname_by_url($api_url));
+                                break;
+                            case CURLE_COULDNT_CONNECT:
+                                printf('Host \'%s\' is unreachable.', hostname_by_url($api_url));
+                                break;
+                    
+                            case CURLE_RECV_ERROR:
+                                echo 'Failure with receiving network data. Connection lost?';
+                                break;
+                
+                            default:
+                                echo "ERROR #$r. See what this error mean on https://curl.se/libcurl/c/libcurl-errors.html";
                         }
                     } */
                 }
@@ -112,10 +135,11 @@ class mdb_api_client extends mdb_data {
             }
         }
 
-        // *use prepare_get_params to append GET-parameters to $url.
-        // Returns either
-        //     on Success: array of [http_status, response_body[, response_headers]].
-        //     on Failure: result of curl_errno(). Eg if it equals to CURLE_OPERATION_TIMEDOUT, then connection timed out. More error codes: https://curl.se/libcurl/c/libcurl-errors.html
+        /* *use prepare_get_params to append GET-parameters to $url.
+           Returns either
+               on Success: array of [http_status, response_body[, response_headers]].
+               on Failure: result of curl_errno(). Eg if it equals to CURLE_OPERATION_TIMEDOUT, then connection timed out. More error codes: https://curl.se/libcurl/c/libcurl-errors.html
+        */
         public static function query_url_status($url, // if you need GET parameters, use static::prepare_get_params($get_params)
                                                 $post_fields = [], // can be either array or JSON string
                                                 $request_method = null, // POST (default), PUT or PATCH. (HEAD not supported for simplity. Use different implementation, eg query_url_head_status().)
