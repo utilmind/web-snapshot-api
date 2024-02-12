@@ -115,9 +115,8 @@ app.post('/snapshot', (req, res) => {
                         }).then(() => {
                             console.log('SNAPSHOT SUCCESS');
                             res.status(200).json({ url, snapshot: fn });
-                        }).catch((lRes) => {
-                            console.log('SNAPSHOT FAILURE');
-                            console.log(lRes);
+                        }).catch(errorReason => {
+                            console.log('SNAPSHOT FAILURE', errorReason);
 
                             // TODO: think about error 507 Insufficient Storage
                             res.status(507).json({ url, error: 'Insufficient Storage' });
@@ -125,9 +124,8 @@ app.post('/snapshot', (req, res) => {
                             browser.close();
                         });
 
-                    }).catch(lRes => {
-                        console.log('NAVIGATION FAILURE');
-                        console.log(lRes);
+                    }).catch(errorReason => {
+                        console.log('NAVIGATION FAILURE', errorReason);
                         // TODO: write into log
 
                         browser.close();
@@ -135,12 +133,14 @@ app.post('/snapshot', (req, res) => {
                     });
                 })
                 // if new page can't be created for any reason
-                .catch(lRes => {
+                .catch(errorReason => {
+                    console.log('Failed to open new page', errorReason);
                     browser.close();
                     res.status(500).json({ url, error: 'Failed to open new page.' });
                 })
             )
-            .catch(lRes => {
+            .catch(errorReason => {
+                console.log('Failed to launch browser', errorReason);
                 res.status(500).json({ url, error: 'Failed to launch browser.' });
             });
 });
