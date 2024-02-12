@@ -5,7 +5,7 @@ require(__DIR__.'/utils/mysql_api_client.php');
 // CONFIG
 mdb_api_client::$request_timeout = 20;
 
-$api_url = 'http://localhost:3000/snapshot/';
+$api_url = 'http://localhost:8080/snapshot/';
 $snapshot_url = 'http://fuckingunexistingdomain/';
 //$snapshot_url = 'http://silkcards.com/';
 $snapshot_url = 'http://utilmind.com/';
@@ -20,6 +20,7 @@ function hostname_by_url(string $url): string {
 
 // GO!
 $r = mdb_api_client::query_url_status($api_url,
+
         json_encode([
             //'url' => 'https://silkcards.com/',
             'url' => $snapshot_url,
@@ -27,6 +28,8 @@ $r = mdb_api_client::query_url_status($api_url,
             'format' => 'png',
 
         ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_IGNORE),
+
+//'test',
         'POST', ['Content-Type: application/json'], true);
 
 // These are errors on our side, during connection with an API.

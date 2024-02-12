@@ -6,7 +6,7 @@ const express = require('express'),
     //fs = require('fs').promises,
 
     app = express(),
-    port = 3000,
+    port = 8080,
 
 
     // CONFIGURATION
@@ -30,27 +30,29 @@ const express = require('express'),
                             ? (undefined !== def ? def : 0) // "" is good value too. Don't replace with 0 if "" set.
                             : v;
 
-
 // Accept application/json only
 app.use(bodyParser.json()); // or use app.use(bodyParser.urlencoded({ extended: true })) to receive raw data, then detect and parse JSON additionally. But we really don't want anything but JSON here.
 
 // Error processing during the processing of incoming request.
+// This block executed only if JSON fails.
 // Also always send some basic headers in response to each query
 app.use((error, req, res, next) => {
     // Send these headers even in case of error
-    res.append('Access-Control-Allow-Origin', ['*'])
-        .append('Access-Control-Allow-Methods', 'POST') //'GET,PUT,POST,DELETE');
-        //.append('Access-Control-Allow-Headers', 'Content-Type')
-        //.append('Accept', 'application/json, application/x-www-form-urlencoded') // Inform client that we support x-www-form-urlencoded too, although we prefer JSON.
-        .append('Accept', 'application/json') // Accept JSON only
-        .append('Content-Type', 'application/json') // Our responses are in JSON format only
-        .append('X-Powered-By', 'UtilMind Web Snapshot Maker v' + version); // or use app.disable('x-powered-by'), to disable this header completely.
+    res.set({
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST', //'GET,PUT,POST,DELETE');
+            //'Access-Control-Allow-Headers': 'Content-Type',
+            //'Accept': 'application/json, application/x-www-form-urlencoded', // Inform client that we support x-www-form-urlencoded too, although we prefer JSON.
+            'Accept': 'application/json', // Accept JSON only
+            'Content-Type': 'application/json', // Our responses are in JSON format only
+            'X-Powered-By': 'UtilMind Web Snapshot Maker v' + version, // or use app.disable('x-powered-by'), to disable this header completely.
+        });
 
     if (error instanceof SyntaxError && (400 === error.status) && 'body' in error) {
         // AK: we also can hook the incoming data buffer before its processing by bodyParser.json(), but we don't want this. Let's make it in simplest way. No JSON = error.
         res.status(400).json({ error: 'Bad request. We expect incoming data in JSON format.' });
 
-    }else {
+    }else { // Call next() only if there is no error
         next();
     }
 });
