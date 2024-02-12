@@ -20,7 +20,6 @@ function hostname_by_url(string $url): string {
 
 // GO!
 $r = mdb_api_client::query_url_status($api_url,
-
         json_encode([
             //'url' => 'https://silkcards.com/',
             'url' => $snapshot_url,
@@ -28,8 +27,6 @@ $r = mdb_api_client::query_url_status($api_url,
             'format' => 'png',
 
         ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_IGNORE),
-
-//'test',
         'POST', ['Content-Type: application/json'], true);
 
 // These are errors on our side, during connection with an API.
