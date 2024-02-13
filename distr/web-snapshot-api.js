@@ -68,7 +68,7 @@ app.use((req, res, next) => { // 3 parameters. Do always.
     next();
 });
 
-// Accept application/json only
+// Accept application/json only. ATTN! It will trigger error if HTTP_ACCEPT header doesn't contain 'application/json' or at least '*/*' value.
 app.use(bodyParser.json()); // or use app.use(bodyParser.urlencoded({ extended: true })) to receive raw data, then detect and parse JSON additionally. But we really don't want anything but JSON here.
 
 // Error processing during the processing of incoming request.
