@@ -1,14 +1,25 @@
 <?php
 require(__DIR__.'/utils/mysql_api_client.php');
 
+/* TODO:
+        1. Process GET requests to /snapshot/. Respond with something, at least 403 Forbidden.
+        2. Authentication. Process reqests with valid public key.
+        3. Send real link to the temporary file.
+        4. Delete outdated (unpaid?) snapshot files.
+        5. Log requests into mySQL db.
+
+        *. Don't take screenshot of the same site more often than once per 1 day. Or use something like 'force' or 'nocache' parameters.
+
+*/
 
 // CONFIG
-mdb_api_client::$request_timeout = 20;
+$is_local = (__DIR__)[0] !== '/';
+//mdb_api_client::$request_timeout = 20;
 
-$api_url = 'https://utilmind.com:3000/snapshot/';
-//$snapshot_url = 'http://fuckingunexistingdomain/';
+$api_url = 'https://utilmind.com/snapshot/';
+//$snapshot_url = 'http://totallycertainlyunexistingdomainname/';
 //$snapshot_url = 'http://silkcards.com/';
-$snapshot_url = 'http://utilmind.com/';
+$snapshot_url = 'http://appcontrols.com/';
 
 
 // PRIVATE FUNCS
@@ -21,7 +32,6 @@ function hostname_by_url(string $url): string {
 // GO!
 $r = mdb_api_client::query_url_status($api_url,
         json_encode([
-            //'url' => 'https://silkcards.com/',
             'url' => $snapshot_url,
             'width' => 1800, //px
             'format' => 'png',

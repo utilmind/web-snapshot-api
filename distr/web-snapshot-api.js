@@ -6,7 +6,7 @@ const express = require('express'),
     //fs = require('fs').promises,
 
     app = express(),
-    port = 8080,
+    port = 3000,
 
 
     // CONFIGURATION
@@ -89,6 +89,7 @@ app.post('/snapshot', (req, res) => {
     puppeteer
         .launch({
                 headless: 'new',
+                args: ['--no-sandbox', '--disable-setuid-sandbox'], // required on Linux
                 ignoreHTTPSErrors: true,
                 defaultViewport: {
                     width,
