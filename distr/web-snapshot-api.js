@@ -132,15 +132,17 @@ app.route('/snapshot')
                             //timeout: 0
                         }).then(() => {
                             console.log('Successful navigation to', url);
-                            const fn = path.join(__dirname, uuidv4() + '.' + format);
+
+                            const fn = path.join(__dirname, uuidv4() + '.' + format), // filename
+                                // IP
+                                forwardedIps = req.headers['x-forwarded-for'],
+                                ip = forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;
+
 
                             dbPool.getConnection((err, db) => {
                                 if (err) throw err;
-
-                                const forwardedIps = req.headers['x-forwarded-for'],
-                                    ip = forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;
                               
-                                console.log('connected as id ' + db.threadId, ip, req.ip);
+                                console.log('connected as id ' + db.threadId, ip);
 
                                 db.query(`INSERT INTO web_snapshot_api_request_log SET url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?`,
                                     [url, fn, ip],
@@ -152,9 +154,6 @@ app.route('/snapshot')
 
                                         console.log('select results', results);
                                     });
-
-                                //db.query('INSERT INTO web_snapshot_api_request_log (url, width, height, format, snapshot, time, ip) ' +
-                                //        `VALUES(${url}, ${})`)
 
                                 db.release();
                             });

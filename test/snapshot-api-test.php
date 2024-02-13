@@ -5,8 +5,8 @@ require(__DIR__.'/utils/mysql_api_client.php');
 $is_local = (__DIR__)[0] !== '/';
 //mdb_api_client::$request_timeout = 20;
 
-//$api_url = 'https://utilmind.com/snapshot/';
-$api_url = 'http://localhost:3000/snapshot/';
+$api_url = 'https://utilmind.com/snapshot/';
+//$api_url = 'http://localhost:3000/snapshot/';
 //$snapshot_url = 'http://totallycertainlyunexistingdomainname/';
 //$snapshot_url = 'http://silkcards.com/';
 $snapshot_url = 'http://appcontrols.com/';
