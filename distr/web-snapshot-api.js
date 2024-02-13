@@ -1,3 +1,12 @@
+/* TODO:
+        1. Authentication. Process reqests with valid public key.
+        2. Send real link to the temporary file.
+        3. Delete outdated (unpaid?) snapshot files.
+        4. Log requests into mySQL db.
+
+        *. Don't take screenshot of the same site more often than once per 1 day. Or use something like 'force' or 'nocache' parameters.
+
+*/
 const express = require('express'),
     bodyParser = require('body-parser'),
     puppeteer = require('puppeteer'),
@@ -142,6 +151,11 @@ app.post('/snapshot', (req, res) => {
                 console.log('Failed to launch browser', errorReason);
                 res.status(500).json({ url, error: 'Failed to launch browser.' });
             });
+});
+
+app.get('/*', (req, res) => {
+    res.set('Content-Type', 'text/html')
+        .status(405).send('<h1>405 Method Not Allowed</h1>');
 });
 
 // Start server

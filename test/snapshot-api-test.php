@@ -1,17 +1,6 @@
 <?php
 require(__DIR__.'/utils/mysql_api_client.php');
 
-/* TODO:
-        1. Process GET requests to /snapshot/. Respond with something, at least 403 Forbidden.
-        2. Authentication. Process reqests with valid public key.
-        3. Send real link to the temporary file.
-        4. Delete outdated (unpaid?) snapshot files.
-        5. Log requests into mySQL db.
-
-        *. Don't take screenshot of the same site more often than once per 1 day. Or use something like 'force' or 'nocache' parameters.
-
-*/
-
 // CONFIG
 $is_local = (__DIR__)[0] !== '/';
 //mdb_api_client::$request_timeout = 20;
