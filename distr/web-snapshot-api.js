@@ -7,19 +7,10 @@
         *. Don't take screenshot of the same site more often than once per 1 day. Or use something like 'force' or 'nocache' parameters.
 
 */
-const express = require('express'),
-    bodyParser = require('body-parser'),
-    puppeteer = require('puppeteer'),
-    path = require('path'), // for path.join(), using system-specific path delimiter
-    { v4: uuidv4 } = require('uuid'),
-    //fs = require('fs').promises,
-
-    app = express(),
-    port = 3000,
-
-
     // CONFIGURATION
     // -------------
+const appName = 'UtilMind Web Snapshot Maker',
+    version = '0.1',
     DEF_IMAGE_FORMAT = 'jpg',
     SUPPORTED_IMAGE_FORMATS = ['jpg', 'png', 'webp'], // other formats may require workarounds: https://screenshotone.com/blog/taking-screenshots-with-puppeteer-in-gif-jp2-tiff-avif-heif-or-svg-format/
 
@@ -29,9 +20,30 @@ const express = require('express'),
     MAX_PAGE_WIDTH = 3840, // 4k video
     MAX_PAGE_HEIGHT = 19200, // 4k width * 5
 
-    appName = 'UtilMind Web Snapshot Maker',
-    version = '0.1',
+    express = require('express'),
+    bodyParser = require('body-parser'),
+    puppeteer = require('puppeteer'),
+    dotenv = require('dotenv').config(),
+    path = require('path'), // for path.join(), using system-specific path delimiter
+    { v4: uuidv4 } = require('uuid'),
+    mysql = require('mysql2'),
 
+    app = express(),
+    port = 3000,
+
+    dbPool = mysql.createPool({
+            host: process.env.DB_HOST,
+            user: process.env.DB_USER,
+            password: process.env.DB_PASS,
+            database: process.env.DB_NAME,
+
+            // waitForConnections: true, // default is TRUE. Wait if all connections are busy. Don't return error if all are busy (in case of FALSE)
+            // connectionLimit: 10, // default is 10. Reserved simultaneous db connections.
+            // queueLimit: 0, // 0 = no limit
+            // idleTimeout: 60000, // idle connections timeout, in milliseconds, the default value 60000
+            // multipleStatements: true, // it's false by default. Uncomment to execute multiple SQL-statements per query.
+            // timezone: undefined, // we don't care so far, but can be interested to specify in the future.
+        }),
 
     // PRIVATE FUNCS
     // -------------
@@ -40,6 +52,8 @@ const express = require('express'),
                             ? (undefined !== def ? def : 0) // "" is good value too. Don't replace with 0 if "" set.
                             : v;
 
+
+// GO!
 // Always send these headers in response to any request
 app.use((req, res, next) => { // 3 parameters. Do always.
     res.set({
@@ -117,6 +131,26 @@ app.route('/snapshot')
                         }).then(() => {
                             console.log('Successful navigation to', url);
                             const fn = path.join(__dirname, uuidv4() + '.' + (format || DEF_IMAGE_FORMAT));
+
+                            dbPool.getConnection((err, db) => {
+                                if (err) throw err;
+
+                                console.log('connected as id ' + db.threadId);
+
+                                db.query('SELECT COUNT(*) FROM web_snapshot_api_client', (err, results) => {
+                                    if (err) {
+                                        console.error('error execution select:', err);
+                                        throw err;
+                                    }
+
+                                    console.log('select results', results);
+                                });
+
+                                //db.query('INSERT INTO web_snapshot_api_request_log (url, width, height, format, snapshot, time, ip) ' +
+                                //        `VALUES(${url}, ${})`)
+
+                                db.release();
+                            });
 
                             // take a screenshot
                             page.screenshot({

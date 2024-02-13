@@ -41,11 +41,9 @@ if (is_int($r)) { // error
         case CURLE_COULDNT_CONNECT:
             printf('Host \'%s\' is unreachable.', hostname_by_url($api_url));
             break;
-
         case CURLE_RECV_ERROR:
             echo 'Failure with receiving network data.';
             break;
-
         default:
             echo "ERROR #$r. See what this error mean on https://curl.se/libcurl/c/libcurl-errors.html";
     }
