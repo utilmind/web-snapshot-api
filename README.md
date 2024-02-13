@@ -5,8 +5,8 @@ NodeJS + Express framework
 
 ## Installation (Linux)
 Make sure that you have installed Chromium browser and "chrome" NPM module.
- * sudo apt get chromium
- * sudo npm install chrome
+ * `sudo apt get chromium`
+ * `sudo npm install chrome`
 
 ## Content
  * `distr` workable REST API server itself.
