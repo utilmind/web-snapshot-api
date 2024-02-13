@@ -29,6 +29,7 @@ const express = require('express'),
     MAX_PAGE_WIDTH = 3840, // 4k video
     MAX_PAGE_HEIGHT = 19200, // 4k width * 5
 
+    appName = 'UtilMind Web Snapshot Maker',
     version = '0.1',
 
 
@@ -48,7 +49,7 @@ app.use((req, res, next) => { // 3 parameters. Do always.
             //'Accept': 'application/json, application/x-www-form-urlencoded', // Inform client that we support x-www-form-urlencoded too, although we prefer JSON.
             'Accept': 'application/json', // Accept JSON only
             'Content-Type': 'application/json', // Our responses are in JSON format only
-            'X-Powered-By': 'UtilMind Web Snapshot Maker v' + version, // or use app.disable('x-powered-by'), to disable this header completely.
+            'X-Powered-By': appName + ' v' + version, // or use app.disable('x-powered-by'), to disable this header completely.
         });
     next();
 });
@@ -70,95 +71,96 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
         full_page: (bool) Default is true/1. Set to false/0 to disable.
         format: (string) Default is DEF_IMAGE_FORMAT. Can be eighter PNG, JPG or WEBP. Case insensitive. Filename created with lowercase extension.
 */
-app.post('/snapshot', (req, res) => {
-    const data = req.body,
-        url = data.url;
+app.route('/snapshot')
+    .post((req, res) => {
+        const data = req.body,
+            url = data.url;
 
-    if (!url) {
-        res.status(400).json({ error: '\'url\' is required.' });
-        return;
-    }
-
-
-    let width = Math.abs(fl0at(data.width, DEF_PAGE_WIDTH)),
-        height = Math.abs(fl0at(data.height, DEF_PAGE_HEIGHT)),
-        format = data.format;
-
-    if (width > MAX_PAGE_WIDTH) width = MAX_PAGE_WIDTH;
-    if (height > MAX_PAGE_HEIGHT) height = MAX_PAGE_HEIGHT;
-    if (format) {
-        format.toLowerCase().replace(/[^a-z\d]/g, ''); // strip all non-latin and non-digit characters. But mostly it used to trim possible leading dot.
-        if ('jpeg' === format) format = 'jpg';
-        if (-1 === SUPPORTED_IMAGE_FORMATS.indexOf(format)) {
-            res.status(400).json({ url, error: `Unsupported image format. Request either: ${SUPPORTED_IMAGE_FORMATS.join(', ')}.` });
+        if (!url) {
+            res.status(400).json({ error: '\'url\' is required.' });
             return;
         }
-    }
 
-    puppeteer
-        .launch({
-                headless: 'new',
-                args: ['--no-sandbox', '--disable-setuid-sandbox'], // required on Linux, OK for Windows too.
-                ignoreHTTPSErrors: true,
-                defaultViewport: {
-                    width,
-                    height
-                },
-            }).then(browser => browser.newPage()
-                .then(page => {
-                    // go to target website
-                    console.log('Browsing to', url);
-                    page.goto(url, {
-                        // wait for content to load
-                        waitUntil: 'networkidle0' //'domcontentloaded',
-                        //timeout: 0
-                    }).then(() => {
-                        console.log('Successful navigation to', url);
-                        const fn = path.join(__dirname, uuidv4() + '.' + (format || DEF_IMAGE_FORMAT));
 
-                        // take a screenshot
-                        page.screenshot({
-                            path: fn,
-                            fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
+        let width = Math.abs(fl0at(data.width, DEF_PAGE_WIDTH)),
+            height = Math.abs(fl0at(data.height, DEF_PAGE_HEIGHT)),
+            format = data.format;
+
+        if (width > MAX_PAGE_WIDTH) width = MAX_PAGE_WIDTH;
+        if (height > MAX_PAGE_HEIGHT) height = MAX_PAGE_HEIGHT;
+        if (format) {
+            format.toLowerCase().replace(/[^a-z\d]/g, ''); // strip all non-latin and non-digit characters. But mostly it used to trim possible leading dot.
+            if ('jpeg' === format) format = 'jpg';
+            if (-1 === SUPPORTED_IMAGE_FORMATS.indexOf(format)) {
+                res.status(400).json({ url, error: `Unsupported image format. Request either: ${SUPPORTED_IMAGE_FORMATS.join(', ')}.` });
+                return;
+            }
+        }
+
+        puppeteer // AK: I don't want to use async/await methods here.
+            .launch({
+                    headless: 'new',
+                    args: ['--no-sandbox', '--disable-setuid-sandbox'], // required on Linux, OK for Windows too.
+                    ignoreHTTPSErrors: true,
+                    defaultViewport: {
+                        width,
+                        height
+                    },
+                }).then(browser => browser.newPage()
+                    .then(page => {
+                        // go to target website
+                        console.log('Browsing to', url);
+                        page.goto(url, {
+                            // wait for content to load
+                            waitUntil: 'networkidle0' //'domcontentloaded',
+                            //timeout: 0
                         }).then(() => {
-                            console.log('SNAPSHOT SUCCESS');
-                            res.status(200).json({ url, snapshot: fn });
+                            console.log('Successful navigation to', url);
+                            const fn = path.join(__dirname, uuidv4() + '.' + (format || DEF_IMAGE_FORMAT));
+
+                            // take a screenshot
+                            page.screenshot({
+                                path: fn,
+                                fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
+                            }).then(() => {
+                                console.log('SNAPSHOT SUCCESS');
+                                res.status(200).json({ url, snapshot: fn });
+                            }).catch(errorReason => {
+                                console.log('SNAPSHOT FAILURE', errorReason);
+
+                                // TODO: think about error 507 Insufficient Storage
+                                res.status(507).json({ url, error: 'Insufficient Storage' });
+                            }).finally(() => {
+                                browser.close();
+                            });
+
                         }).catch(errorReason => {
-                            console.log('SNAPSHOT FAILURE', errorReason);
+                            console.log('NAVIGATION FAILURE', errorReason);
+                            // TODO: write into log
 
-                            // TODO: think about error 507 Insufficient Storage
-                            res.status(507).json({ url, error: 'Insufficient Storage' });
-                        }).finally(() => {
                             browser.close();
+                            res.status(500).json({ url, error: 'Failed to load URL.' });
                         });
-
-                    }).catch(errorReason => {
-                        console.log('NAVIGATION FAILURE', errorReason);
-                        // TODO: write into log
-
+                    })
+                    // if new page can't be created for any reason
+                    .catch(errorReason => {
+                        console.log('Failed to open new page', errorReason);
                         browser.close();
-                        res.status(500).json({ url, error: 'Failed to load URL.' });
-                    });
-                })
-                // if new page can't be created for any reason
+                        res.status(500).json({ url, error: 'Failed to open new page.' });
+                    })
+                )
                 .catch(errorReason => {
-                    console.log('Failed to open new page', errorReason);
-                    browser.close();
-                    res.status(500).json({ url, error: 'Failed to open new page.' });
-                })
-            )
-            .catch(errorReason => {
-                console.log('Failed to launch browser', errorReason);
-                res.status(500).json({ url, error: 'Failed to launch browser.' });
-            });
-});
+                    console.log('Failed to launch browser', errorReason);
+                    res.status(500).json({ url, error: 'Failed to launch browser.' });
+                });
 
-app.get('/*', (req, res) => {
-    res.set('Content-Type', 'text/html')
-        .status(405).send('<h1>405 Method Not Allowed</h1>');
-});
+    }).all((req, res) => {
+        //res.error(405, `The ${req.method} method for the "${req.originalUrl}" route is not supported.`);
+        res.set('Content-Type', 'text/html')
+            .status(405).send('<h1>405 Method Not Allowed</h1>');
+    });
 
 // Start server
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+    console.log(`${appName} running on port ${port}...`);
 });
