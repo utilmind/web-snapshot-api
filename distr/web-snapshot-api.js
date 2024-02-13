@@ -135,9 +135,9 @@ app.route('/snapshot')
 
                             const fn = path.join(__dirname, uuidv4() + '.' + format), // filename
                                 // IP
+                                // AK: alternatively try module 'request-ip'. But this should work already. Also remember, we have X-Real-IP header in Nginx config.
                                 forwardedIps = req.headers['x-forwarded-for'],
-                                ip = forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;
-
+                                ip = forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;.
 
                             dbPool.getConnection((err, db) => {
                                 if (err) throw err;
