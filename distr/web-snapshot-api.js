@@ -109,6 +109,8 @@ app.route('/snapshot')
                 res.status(400).json({ url, error: `Unsupported image format. Request either: ${SUPPORTED_IMAGE_FORMATS.join(', ')}.` });
                 return;
             }
+        }else {
+            format = DEF_IMAGE_FORMAT;
         }
 
         puppeteer // AK: I don't want to use async/await methods here.
@@ -130,21 +132,26 @@ app.route('/snapshot')
                             //timeout: 0
                         }).then(() => {
                             console.log('Successful navigation to', url);
-                            const fn = path.join(__dirname, uuidv4() + '.' + (format || DEF_IMAGE_FORMAT));
+                            const fn = path.join(__dirname, uuidv4() + '.' + format);
 
                             dbPool.getConnection((err, db) => {
                                 if (err) throw err;
 
-                                console.log('connected as id ' + db.threadId);
+                                const forwardedIps = req.headers['x-forwarded-for'],
+                                    ip = forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;
+                              
+                                console.log('connected as id ' + db.threadId, ip, req.ip);
 
-                                db.query('SELECT COUNT(*) FROM web_snapshot_api_client', (err, results) => {
-                                    if (err) {
-                                        console.error('error execution select:', err);
-                                        throw err;
-                                    }
+                                db.query(`INSERT INTO web_snapshot_api_request_log SET url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?`,
+                                    [url, fn, ip],
+                                    (err, results) => {
+                                        if (err) {
+                                            console.error('error execution select:', err);
+                                            throw err;
+                                        }
 
-                                    console.log('select results', results);
-                                });
+                                        console.log('select results', results);
+                                    });
 
                                 //db.query('INSERT INTO web_snapshot_api_request_log (url, width, height, format, snapshot, time, ip) ' +
                                 //        `VALUES(${url}, ${})`)
