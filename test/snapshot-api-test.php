@@ -27,7 +27,10 @@ $r = mdb_api_client::query_url_status($api_url,
             'format' => 'png',
 
         ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_IGNORE),
-        'POST', ['Content-Type: application/json'], true);
+        'POST', [
+                'Content-Type: application/json',
+                'Authorization: test',
+            ], true);
 
 // These are errors on our side, during connection with an API.
 if (is_int($r)) { // error

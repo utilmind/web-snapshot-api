@@ -87,6 +87,10 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
 */
 app.route('/snapshot')
     .post((req, res) => {
+
+        const authorizationHeader = req.headers['authorization'];
+        console.log('Authorization Header:', authorizationHeader);
+
         const data = req.body,
             url = data.url;
 
@@ -137,7 +141,7 @@ app.route('/snapshot')
                                 // IP
                                 // AK: alternatively try module 'request-ip'. But this should work already. Also remember, we have X-Real-IP header in Nginx config.
                                 forwardedIps = req.headers['x-forwarded-for'],
-                                ip = forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;.
+                                ip = forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;
 
                             dbPool.getConnection((err, db) => {
                                 if (err) throw err;
