@@ -48,7 +48,7 @@ app.use((req, res, next) => { // 3 parameters. Do always.
             //'Access-Control-Allow-Headers': 'Content-Type',
             //'Accept': 'application/json, application/x-www-form-urlencoded', // Inform client that we support x-www-form-urlencoded too, although we prefer JSON.
             'Accept': 'application/json', // Accept JSON only
-            'Content-Type': 'application/json', // Our responses are in JSON format only
+            'Content-Type': 'application/json', // Our responses are in JSON format only. (Except for 405 Method Not Allowed errors, if used not POST method or wrong route.)
             'X-Powered-By': appName + ' v' + version, // or use app.disable('x-powered-by'), to disable this header completely.
         });
     next();
