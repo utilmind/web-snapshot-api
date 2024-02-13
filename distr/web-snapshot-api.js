@@ -89,7 +89,7 @@ app.post('/snapshot', (req, res) => {
     puppeteer
         .launch({
                 headless: 'new',
-                args: ['--no-sandbox', '--disable-setuid-sandbox'], // required on Linux
+                args: ['--no-sandbox', '--disable-setuid-sandbox'], // required on Linux, OK for Windows too.
                 ignoreHTTPSErrors: true,
                 defaultViewport: {
                     width,
