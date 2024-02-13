@@ -1,5 +1,8 @@
 # Ignore node modules
 node_modules
+package-lock.json
+.env
+1
 *.png
 *.jpg
 *.webp
