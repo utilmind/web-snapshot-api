@@ -23,14 +23,14 @@ function hostname_by_url(string $url): string {
 // GO!
 $r = mdb_api_client::query_url_status($api_url,
         json_encode([
-            'url' => $snapshot_url,
+            'url' => $snapshot_url, // required parameter
             'width' => 1800, //px
-            'format' => 'png',
+            'format' => 'jpg',
 
         ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_IGNORE),
         'POST', [
                 'Content-Type: application/json',
-                'Authorization: '.$authorization_token,
+                'Authorization: Bearer '.$authorization_token, // required header
             ], true);
 
 // These are errors on our side, during connection with an API.
@@ -46,7 +46,7 @@ if (is_int($r)) { // error
             printf('Host \'%s\' is unreachable.', hostname_by_url($api_url));
             break;
         case CURLE_RECV_ERROR:
-            echo 'Failure with receiving network data.';
+            echo 'Failure with receiving network data. Connection lost?';
             break;
         default:
             echo "ERROR #$r. See what this error mean on https://curl.se/libcurl/c/libcurl-errors.html";
