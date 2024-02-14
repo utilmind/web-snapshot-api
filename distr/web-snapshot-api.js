@@ -22,9 +22,7 @@ const appName = 'UtilMind Web Snapshot Maker',
 
     MIN_ACCESS_KEY_LEN = 32,
 
-    ERR_BAD_REQUEST_FORMAT = 'Bad request. We expect incoming data in JSON format.',
-    ERR_URL_REQUIRED = "'url' is required.",
-    ERR_BAD_BEARER = 'Authorization required by Bearer scheme.',
+    // Basic error responses. (No need to describe they all, enough are those which used in more than one case.)
     ERR_INVALID_ACCESS_KEY = 'Invalid access key. You have limited number of attempts before your IP will be banned.',
 
 
@@ -84,7 +82,7 @@ app.use(bodyParser.json()); // or use app.use(bodyParser.urlencoded({ extended: 
 // Error processing during the processing of incoming request.
 app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this block executed only in case of JSON error.
     // if (error instanceof SyntaxError && (400 === error.status) && 'body' in error) // It's odd. We can be here only in case of JSON parse error.
-    res.status(400).json({ error: ERR_BAD_REQUEST_FORMAT });
+    res.status(400).json({ error: 'Bad request. We expect incoming data in JSON format.' });
 });
 
 
@@ -102,13 +100,13 @@ app.route('/snapshot')
 
         // We don't want to connect to mySQL if URL not provided. Certanily bad request.
         if (!url) {
-            return res.status(400).json({ error: ERR_URL_REQUIRED });
+            return res.status(400).json({ error: "'url' is required." });
         }
 
         // Check Authorzation first
         const accessKey = req.headers['authorization'].split(' ', 2); // [Authentication Scheme] [Access Key]
         if (!accessKey[1] || ('Bearer' !== accessKey[0])) { // we don't want to check db if key length is less than allowed minimum. And yes, even scheme name ("Bearer") is case sensitive here.
-            return res.status(403).json({ url, error: ERR_BAD_BEARER });
+            return res.status(403).json({ url, error: 'Authorization required by Bearer scheme.' });
         }
 
         if ((accessKey[1].length < MIN_ACCESS_KEY_LEN)) { // we don't want to check db if key length is less than allowed minimum.
