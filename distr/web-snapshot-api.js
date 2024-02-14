@@ -59,7 +59,12 @@ const appName = 'UtilMind Web Snapshot Maker',
     // same as parseFloat, but returns 0 if parseFloat returns non-numerical value
     fl0at = (v, def) => isNaN(v = parseFloat(v))
                             ? (undefined !== def ? def : 0) // "" is good value too. Don't replace with 0 if "" set.
-                            : v;
+                            : v,
+
+    // The only response in text/html format. Others are JSONs.
+    methodNotAllowed = x => res.set('Content-Type', 'text/html')
+                                .status(405)
+                                .send('<h1>405 Method Not Allowed</h1>');
 
 // GO!
 // Always send these headers in response to any request
@@ -85,13 +90,33 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
     res.status(400).json({ error: 'Bad request. We expect incoming data in JSON format.' });
 });
 
+/*
+    Supported methods:
+        /snapshot: take the snapshot of an URL, save the image file on the server's storage and return image file (as link or binary) to client.
+        /list: returns the list of existing snapshots of certain URL
+        /remove: delete snapshot from the server's storage. (* Each client identified by access key can remove only own images.)
+*/
 
-/* Accepted parameters. URL is required, all others are optional. Default values will be used if they are not specified.
+
+/*  /snapshot:
+    Accepted parameters. URL is required, all others are optional. Default values will be used if they are not specified.
         url: (string) Required parameter.
         width: (float) Default is DEF_PAGE_WIDTH.
         height: (float) Default is DEF_PAGE_HEIGHT.
         full_page: (bool) Default is true/1. Set to false/0 to disable.
         format: (string) Default is DEF_IMAGE_FORMAT. Can be eighter PNG, JPG or WEBP. Case insensitive. Filename created with lowercase extension.
+        get: (string) Default is 'url'. Other methods not implemented on 2024-02-14. TODO: either URL to the filename with snapshot (url) OR base64-encoded binary data of the image (base64).
+
+    This server holds the snapshot in its storage. The following parameters allow to manage snapshot in storage.
+        valid_time: (int) in seconds. Default is 7 * 24 * 60 * 60 (eg 7 days = 604800 seconds).
+                    Timeout in seconds of validity of existing snapshot. Set to 0 always retreive fresh screenshot, or 3600 (60*60 seconds) to retreive fresh screenshot not often than once per hour.
+
+        overwrite: (bool) Default is FALSE. Overwrite LAST existing (previous) snapshot of an URL, or create new record.
+                    TRUE = overwrite last snapshot, FALSE (default) = create a new record, leaving existing snapshot(s) in archive.
+
+        expire: (int OR string) with the Unix timestamp OR DATE in YYYY-MM-DD HH:MM:SS(+TZ) format. Default timzone is UTC (GMT+0).
+                    Timestamp when the file should be expired and deleted from server storage.
+                    NOTE: garbage collector removes mages once per day.
 */
 app.route('/snapshot')
     .post((req, res) => {
@@ -226,11 +251,18 @@ app.route('/snapshot')
             res.status(500).json({ url, error: "Temporarily can't validate access key." });
         }
 
-    }).all((req, res) => {
-        // The only response in text/html format. Others are JSONs.
-        res.set('Content-Type', 'text/html')
-            .status(405).send('<h1>405 Method Not Allowed</h1>');
-    });
+    }).all(x => methodNotAllowed);
+
+
+app.route('/list')
+    .post((req, res) => {
+        req.status(503).json({ error: "Not implemented." });
+    }).all(x => methodNotAllowed);
+
+app.route('/remove')
+    .post((req, res) => {
+        req.status(503).json({ error: "Not implemented." });
+    }).all(x => methodNotAllowed);
 
 // Start server
 app.listen(port, () => {
