@@ -22,6 +22,11 @@ const appName = 'UtilMind Web Snapshot Maker',
 
     MIN_ACCESS_KEY_LEN = 32,
 
+    ERR_BAD_REQUEST_FORMAT = 'Bad request. We expect incoming data in JSON format.',
+    ERR_URL_REQUIRED = "'url' is required.",
+    ERR_BAD_BEARER = 'Authorization required by Bearer scheme.',
+    ERR_INVALID_ACCESS_KEY = 'Invalid access key. You have limited number of attempts before your IP will be banned.',
+
 
     // MODULES
     // -------
@@ -58,7 +63,6 @@ const appName = 'UtilMind Web Snapshot Maker',
                             ? (undefined !== def ? def : 0) // "" is good value too. Don't replace with 0 if "" set.
                             : v;
 
-
 // GO!
 // Always send these headers in response to any request
 app.use((req, res, next) => { // 3 parameters. Do always.
@@ -80,7 +84,7 @@ app.use(bodyParser.json()); // or use app.use(bodyParser.urlencoded({ extended: 
 // Error processing during the processing of incoming request.
 app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this block executed only in case of JSON error.
     // if (error instanceof SyntaxError && (400 === error.status) && 'body' in error) // It's odd. We can be here only in case of JSON parse error.
-    res.status(400).json({ error: 'Bad request. We expect incoming data in JSON format.' });
+    res.status(400).json({ error: ERR_BAD_REQUEST_FORMAT });
 });
 
 
@@ -98,28 +102,30 @@ app.route('/snapshot')
 
         // We don't want to connect to mySQL if URL not provided. Certanily bad request.
         if (!url) {
-            res.status(400).json({ error: '\'url\' is required.' });
-            return;
+            return res.status(400).json({ error: ERR_URL_REQUIRED });
         }
 
         // Check Authorzation first
-        const accessKey = req.headers['authorization'];
-        if (!accessKey || (accessKey.length < MIN_ACCESS_KEY_LEN)) { // we don't want to check db if key length is less than allowed minimum.
-            res.status(403).json({ url, error: 'Authorization required.' });
-            return;
+        const accessKey = req.headers['authorization'].split(' ', 2); // [Authentication Scheme] [Access Key]
+        if (!accessKey[1] || ('Bearer' !== accessKey[0])) { // we don't want to check db if key length is less than allowed minimum. And yes, even scheme name ("Bearer") is case sensitive here.
+            return res.status(403).json({ url, error: ERR_BAD_BEARER });
+        }
+
+        if ((accessKey[1].length < MIN_ACCESS_KEY_LEN)) { // we don't want to check db if key length is less than allowed minimum.
+            // Although we warn user that numer of request attempts are limited, we don't want to log this request in DB, if length is less than required. Just ignore this.
+            return res.status(403).json({ url, error: ERR_INVALID_ACCESS_KEY });
         }
 
         try {
             dbPool.getConnection((err, db) => {
                 if (err) throw err;
 
-                db.query('SELECT id FROM web_snapshot_api_client WHERE `key`=?', [accessKey], (err, row) => {
+                db.query('SELECT id FROM web_snapshot_api_client WHERE `key`=?', [accessKey[1]], (err, row) => {
                     if (err) throw err;
 
                     if (!row.length) { // non-fatal error, just access key is invalid.
                         console.error('Invalid access key', accessKey);
-                        res.status(403).json({ url, error: "Invalid access key. You have limited number of attempts before your IP will be banned." }); // TODO: do the limit!
-                        return;
+                        return res.status(403).json({ url, error: ERR_INVALID_ACCESS_KEY }); // TODO: do the limit!
                     }
 
                     const clientId = row[0].id;
@@ -133,8 +139,7 @@ app.route('/snapshot')
                         format.toLowerCase().replace(/[^a-z\d]/g, ''); // strip all non-latin and non-digit characters. But mostly it used to trim possible leading dot.
                         if ('jpeg' === format) format = 'jpg';
                         if (-1 === SUPPORTED_IMAGE_FORMATS.indexOf(format)) {
-                            res.status(400).json({ url, error: `Unsupported image format. Request either: ${SUPPORTED_IMAGE_FORMATS.join(', ')}.` });
-                            return;
+                            return res.status(400).json({ url, error: `Unsupported image format. Request either: ${SUPPORTED_IMAGE_FORMATS.join(', ')}.` });
                         }
                     }else {
                         format = DEF_IMAGE_FORMAT;
@@ -222,7 +227,7 @@ app.route('/snapshot')
         }
 
     }).all((req, res) => {
-        //res.error(405, `The ${req.method} method for the "${req.originalUrl}" route is not supported.`);
+        // The only response in text/html format. Others are JSONs.
         res.set('Content-Type', 'text/html')
             .status(405).send('<h1>405 Method Not Allowed</h1>');
     });
