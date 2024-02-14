@@ -3,6 +3,9 @@
 
 NodeJS + Express framework
 
+## Disclaimer
+This is my first public Open Source project in NodeJS. Please don't judge harshly and welcome to contribute.
+
 ## Installation (Linux)
 Make sure that you have installed Chromium browser and "chrome" NPM module.
  * `sudo apt get chromium`
