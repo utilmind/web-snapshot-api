@@ -26,7 +26,7 @@ Make sure that you have installed Chromium browser and "chrome" NPM module.
  * `format`: (string) Default is DEF_IMAGE_FORMAT. Can be eighter `PNG`, `JPG` or `WEBP`. Case insensitive. Filename created with lowercase extension.
 
 ## Returns
- * Success: HTTP status 200. JSON { url: returns original URL, snapshot: filename }.
+ * Success: HTTP status 201 (snapshot created). JSON { url: returns original URL, snapshot: filename }.
  * Failure: HTTP status 400 (or another 4XX/5XX). JSON { error: reason }.
 
 ## Similar projects (actually not looked into them, here is the top results from Google search by `github web snapshot` keywords)
