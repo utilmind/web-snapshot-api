@@ -22,7 +22,7 @@ const appName = 'UtilMind Web Snapshot Maker',
 
     MIN_ACCESS_KEY_LEN = 32,
 
-    // Basic error responses. (No need to describe they all, enough are those which used in more than one case.)
+    // Basic error responses. (No need to list them all, enough are those which used in more than one case.)
     ERR_INVALID_ACCESS_KEY = 'Invalid access key. You have limited number of attempts before your IP will be banned.',
 
 
