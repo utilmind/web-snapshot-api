@@ -8,6 +8,9 @@
 
 */
     // CONFIGURATION
+
+const { access } = require('fs');
+
     // -------------
 const appName = 'UtilMind Web Snapshot Maker',
     version = '0.1',
@@ -89,6 +92,14 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
 */
 app.route('/snapshot')
     .post((req, res) => {
+        const data = req.body,
+            url = data.url;
+
+        // We don't want to connect to mySQL if URL not provided. Certanily bad request.
+        if (!url) {
+            res.status(400).json({ error: '\'url\' is required.' });
+            return;
+        }
 
         // Check Authorzation first
         const accessKey = req.headers['authorization'];
@@ -102,23 +113,15 @@ app.route('/snapshot')
                 if (err) throw err;
 
                 db.query('SELECT id FROM web_snapshot_api_client WHERE `key`=?', [accessKey], (err, row) => {
-                    db.release();
                     if (err) throw err;
 
                     if (!row.length) { // non-fatal error, just access key is invalid.
+                        console.error('Invalid access key', accessKey);
                         res.status(403).json({ url, error: "Invalid access key. You have limited number of attempts before your IP will be banned." }); // TODO: do the limit!
                         return;
                     }
 
-                    const clientId = row[0].id,
-                        data = req.body,
-                        url = data.url;
-
-                    if (!url) {
-                        res.status(400).json({ error: '\'url\' is required.' });
-                        return;
-                    }
-
+                    const clientId = row[0].id;
                     let width = Math.abs(fl0at(data.width, DEF_PAGE_WIDTH)),
                         height = Math.abs(fl0at(data.height, DEF_PAGE_HEIGHT)),
                         format = data.format;
@@ -164,12 +167,11 @@ app.route('/snapshot')
 
                                         dbPool.getConnection((err, db) => {
                                             if (err) throw err;
-                                        
-                                            console.log('connected as id ' + db.threadId, ip);
 
                                             db.query(`INSERT INTO web_snapshot_api_request_log SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?`,
                                                 [clientId, url, fn, ip],
                                                 (err, results) => {
+
                                                     if (err) {
                                                         console.error('error execution select:', err);
                                                         throw err;
@@ -177,7 +179,6 @@ app.route('/snapshot')
 
                                                     console.log('select results', results);
                                                 });
-
                                             db.release();
                                         });
 
@@ -217,6 +218,7 @@ app.route('/snapshot')
                                 res.status(500).json({ url, error: 'Failed to launch browser.' });
                             });
                 });
+                db.release();
             });
         }catch(e) {
             console.log('MySQL error', err);
