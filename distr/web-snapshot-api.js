@@ -160,7 +160,8 @@ app.route('/snapshot')
                                     }).then(() => {
                                         console.log('Successful navigation to', url);
 
-                                        const fn = path.join(__dirname, uuidv4() + '.' + format), // filename
+                                        const fileId = uuidv4(),
+                                            fn = path.join(__dirname, fileId + '.' + format), // filename
                                             // IP
                                             // AK: alternatively try module 'request-ip'. But this should work already. Also remember, we have X-Real-IP header in Nginx config.
                                             forwardedIps = req.headers['x-forwarded-for'],
@@ -170,15 +171,9 @@ app.route('/snapshot')
                                             if (err) throw err;
 
                                             db.query(`INSERT INTO web_snapshot_api_request_log SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?`,
-                                                [clientId, url, fn, ip],
-                                                (err, results) => {
-
-                                                    if (err) {
-                                                        console.error('error execution select:', err);
-                                                        throw err;
-                                                    }
-
-                                                    console.log('select results', results);
+                                                [clientId, url, fileId, ip],
+                                                (err) => {
+                                                    if (err) throw err;
                                                 });
                                             db.release();
                                         });
