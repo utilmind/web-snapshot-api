@@ -103,9 +103,11 @@ app.route('/snapshot')
             return res.status(400).json({ error: "'url' is required." });
         }
 
-        // Check Authorzation first
-        const accessKey = req.headers['authorization'].split(' ', 2); // [Authentication Scheme] [Access Key]
-        if (!accessKey[1] || ('Bearer' !== accessKey[0])) { // we don't want to check db if key length is less than allowed minimum. And yes, even scheme name ("Bearer") is case sensitive here.
+        // Check Authorzation first. We require explicit "Bearer" scheme, in compliance with https://www.rfc-editor.org/rfc/rfc6750
+        const accessKey = req.headers['authorization'].split(' ', 2); // [Authentication Scheme] [Access Key]. We support Bearer scheme only. Access Key must contain valid base64 characters only.
+        if (!accessKey[1]
+                || ('Bearer' !== accessKey[0]) // we don't want to check db if key length is less than allowed minimum. And yes, even scheme name ("Bearer") is case sensitive here.
+                || !/^[A-Za-z\d+/]+={0,2}$/.test(accessKey[1])) { // Are characters valid for base64 encoding? (No bad characters? We don't want to check them in DB + keys with non-base64 encoding characters are not really Bearer-compliant.)
             return res.status(403).json({ url, error: 'Authorization required by Bearer scheme.' });
         }
 
