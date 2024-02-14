@@ -7,11 +7,8 @@
         *. Don't take screenshot of the same site more often than once per 1 day. Or use something like 'force' or 'nocache' parameters.
 
 */
-    // CONFIGURATION
-
-const { access } = require('fs');
-
-    // -------------
+// CONFIGURATION
+// -------------
 const appName = 'UtilMind Web Snapshot Maker',
     version = '0.1',
     DEF_IMAGE_FORMAT = 'jpg',
@@ -25,6 +22,9 @@ const appName = 'UtilMind Web Snapshot Maker',
 
     MIN_ACCESS_KEY_LEN = 32,
 
+
+    // MODULES
+    // -------
     express = require('express'),
     bodyParser = require('body-parser'),
     puppeteer = require('puppeteer'),
@@ -49,6 +49,7 @@ const appName = 'UtilMind Web Snapshot Maker',
             // multipleStatements: true, // it's false by default. Uncomment to execute multiple SQL-statements per query.
             // timezone: undefined, // we don't care so far, but can be interested to specify in the future.
         }),
+
 
     // PRIVATE FUNCS
     // -------------
