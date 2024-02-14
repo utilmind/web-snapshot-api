@@ -104,14 +104,14 @@ app.route('/snapshot')
         }
 
         // Check Authorzation first. We require explicit "Bearer" scheme, in compliance with https://www.rfc-editor.org/rfc/rfc6750
-        const accessKey = req.headers['authorization'].split(' ', 2); // [Authentication Scheme] [Access Key]. We support Bearer scheme only. Access Key must contain valid base64 characters only.
-        if (!accessKey[1]
-                || ('Bearer' !== accessKey[0]) // we don't want to check db if key length is less than allowed minimum. And yes, even scheme name ("Bearer") is case sensitive here. Consider this as part of the token :)
-                || !/^[A-Za-z\d+/]+={0,2}$/.test(accessKey[1])) { // Are characters valid for base64 encoding? (No bad characters? We don't want to check them in DB + keys with non-base64 encoding characters are not really Bearer-compliant.)
+        let accessKey = req.headers['authorization'].split(' ', 2); // [Authentication Scheme] [Access Key]. We support Bearer scheme only. Access Key must contain valid base64 characters only.
+        if (('Bearer' !== accessKey[0]) // we don't want to check db if key length is less than allowed minimum. And yes, even scheme name ("Bearer") is case sensitive here. Consider this as part of the token :)
+                || !(accessKey = accessKey[1])
+                || !/^[A-Za-z\d+/]+={0,2}$/.test(accessKey)) { // Are characters valid for base64 encoding? (No bad characters? We don't want to check them in DB + keys with non-base64 encoding characters are not really Bearer-compliant.)
             return res.status(403).json({ url, error: 'Authorization required by Bearer scheme.' });
         }
 
-        if ((accessKey[1].length < MIN_ACCESS_KEY_LEN)) { // we don't want to check db if key length is less than allowed minimum.
+        if ((accessKey.length < MIN_ACCESS_KEY_LEN)) { // we don't want to check db if key length is less than allowed minimum.
             // Although we warn user that numer of request attempts are limited, we don't want to log this request in DB, if length is less than required. Just ignore this.
             return res.status(403).json({ url, error: ERR_INVALID_ACCESS_KEY });
         }
@@ -120,7 +120,7 @@ app.route('/snapshot')
             dbPool.getConnection((err, db) => {
                 if (err) throw err;
 
-                db.query('SELECT id FROM web_snapshot_api_client WHERE `key`=?', [accessKey[1]], (err, row) => {
+                db.query('SELECT id FROM web_snapshot_api_client WHERE `key`=? AND active=1', [accessKey], (err, row) => {
                     if (err) throw err;
 
                     if (!row.length) { // non-fatal error, just access key is invalid.
