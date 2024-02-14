@@ -217,8 +217,8 @@ app.route('/snapshot')
                                             path: fn,
                                             fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
                                         }).then(() => {
-                                            console.log('SNAPSHOT SUCCESS');
-                                            res.status(200).json({ url, snapshot: fn });
+                                            console.log('SNAPSHOT CREATED');
+                                            res.status(201).json({ url, snapshot: fn });
                                         }).catch(errorReason => {
                                             console.error('SNAPSHOT FAILURE', errorReason);
 
