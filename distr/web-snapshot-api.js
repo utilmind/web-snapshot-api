@@ -117,6 +117,10 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
         expire: (int OR string) with the Unix timestamp OR DATE in YYYY-MM-DD HH:MM:SS(+TZ) format. Default timzone is UTC (GMT+0).
                     Timestamp when the file should be expired and deleted from server storage.
                     NOTE: garbage collector removes mages once per day.
+
+    Response:
+        Successfull response is HTTP code 201 (snapshot created).
+        Unsuccessful -- 400, 403, 500, 507, depending on the cause of the error.
 */
 app.route('/snapshot')
     .post((req, res) => {

@@ -25,3 +25,10 @@ Make sure that you have installed Chromium browser and "chrome" NPM module.
 ## Returns
  * Success: HTTP status 200. JSON { url: returns original URL, snapshot: filename }.
  * Failure: HTTP status 400 (or another 4XX/5XX). JSON { error: reason }.
+
+## Similar projects (actually not looked into them, here is the top results from Google search by `github web snapshot` keywords)
+ * https://github.com/sindresorhus/capture-website
+ * https://github.com/topics/website-screenshot-capturer
+ * https://github.com/maaaaz/webscreenshot
+
+etc... I'm sure there are many similar project out there, but my original goal was to create my own implementation, mainly for the purpose of self-education.
