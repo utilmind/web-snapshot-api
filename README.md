@@ -2,6 +2,7 @@
  Web Snapshot Maker API
 
 NodeJS + Express framework + Puppeteer
+Bonus: client app example in PHP (in `test` directory).
 
 ## Disclaimer
 This is my first public Open Source project in NodeJS. Please don't judge harshly and welcome to contribute.
