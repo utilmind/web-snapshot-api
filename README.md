@@ -1,8 +1,12 @@
 # web-snapshot-api
- Web Snapshot Maker API
+ Web Snapshot Maker API.
+  * Not just another snapshot maker, but the full featured REST API which receiving an URLs from another apps and returns an URL to produced `/snapshot`.
+  * Additionally it holds produced snapshots in the storage and gives an access to entire `/list`, until the expiration of stored files OR until the outdated snapshots will be deleted with `/remove` command.
 
-NodeJS + Express framework + Puppeteer<br />
-Bonus: client app example in PHP (in `test` directory).
+The Git contains the client app example in PHP, in `client-example` directory.
+
+Tools:
+  * NodeJS + Express framework + Puppeteer
 
 ## Disclaimer
 This is my first public Open Source project in NodeJS. Please don't judge harshly and welcome to contribute.
