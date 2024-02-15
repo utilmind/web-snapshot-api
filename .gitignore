@@ -1,4 +1,5 @@
 # Ignore node modules
+_utils
 node_modules
 package-lock.json
 .env
