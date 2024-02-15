@@ -1,8 +1,7 @@
+--
 -- Table structure for table `web_snapshot_api_client`
 --
-/*
-DROP TABLE IF EXISTS `web_snapshot_api_client`;
-*/
+/* DROP TABLE IF EXISTS `web_snapshot_api_client`; */
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `web_snapshot_api_client` (
@@ -18,9 +17,7 @@ CREATE TABLE `web_snapshot_api_client` (
 --
 -- Table structure for table `web_snapshot_api_request_log`
 --
-/*
-DROP TABLE IF EXISTS `web_snapshot_api_request_log`;
-*/
+/* DROP TABLE IF EXISTS `web_snapshot_api_request_log`;*/
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `web_snapshot_api_request_log` (
@@ -41,14 +38,12 @@ CREATE TABLE `web_snapshot_api_request_log` (
 --
 -- Table structure for table `web_snapshot_api_ban`
 --
-/*
-DROP TABLE IF EXISTS `web_snapshot_api_ban`;
-*/
+/* DROP TABLE IF EXISTS `web_snapshot_api_ban`; */
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `web_snapshot_api_ban` (
   `ip` char(45) NOT NULL DEFAULT '',
-  `failed_attempts` tinyint(3) unsigned NOT NULL DEFAULT 0,
+  `attempts` tinyint(3) unsigned NOT NULL DEFAULT 0 COMMENT 'Failed attempts',
   `time` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`ip`)
 ) ENGINE=MyISAM DEFAULT CHARSET=ascii PACK_KEYS=0;
