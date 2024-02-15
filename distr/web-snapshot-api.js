@@ -22,6 +22,9 @@ const appName = 'UtilMind Web Snapshot Maker',
 
     MIN_ACCESS_KEY_LEN = 32,
 
+    DEF_STORAGE_DIR = "_storage", // no trailing slashes please. Alternatively (and preferable) specify STORAGE_DIR constant in .env. If STORAGE_DIR is omitted, current directory path.join(__dirname, DEF_STORAGE_DIR) used as the root directory for storage.
+    DEF_STORAGE_URL = "",    
+
     // Basic error responses. (No need to list them all, enough are those which used in more than one case.)
     ERR_INVALID_ACCESS_KEY = 'Invalid access key. You have limited number of attempts before your IP will be banned.',
 
@@ -33,12 +36,14 @@ const appName = 'UtilMind Web Snapshot Maker',
     puppeteer = require('puppeteer'),
     dotenv = require('dotenv').config(),
     path = require('path'), // for path.join(), using system-specific path delimiter
+    fs = require('fs'), // for mkdir()
     { v4: uuidv4 } = require('uuid'),
     mysql = require('mysql2'),
 
     app = express(),
     port = 3000,
 
+    // MySQL uses varaibles from .env. BTW we also can specify directory to store snapshot files as STORAGE_DIR constant. 
     dbPool = mysql.createPool({ // the following variables (credentials) described in ".env", which not provided in repository
             host: process.env.DB_HOST,
             user: process.env.DB_USER,
@@ -61,12 +66,16 @@ const appName = 'UtilMind Web Snapshot Maker',
                             ? (undefined !== def ? def : 0) // "" is good value too. Don't replace with 0 if "" set.
                             : v,
 
+    storageDirName = fileId => (Math.floor(fileId / 1000) * 1000).toString(),
+
     // The only response in text/html format. Others are JSONs.
     methodNotAllowed = x => res.set('Content-Type', 'text/html')
                                 .status(405)
                                 .send('<h1>405 Method Not Allowed</h1>');
 
 // GO!
+
+
 // Always send these headers in response to any request
 app.use((req, res, next) => { // 3 parameters. Do always.
     res.set({
@@ -124,6 +133,8 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
 */
 app.route('/snapshot')
     .post((req, res) => {
+console.log('query', req.headers.host);
+
         const data = req.body,
             url = data.url;
 
@@ -194,8 +205,7 @@ app.route('/snapshot')
                                     }).then(() => {
                                         console.log('Successful navigation to', url);
 
-                                        const fileId = uuidv4(),
-                                            fn = path.join(__dirname, fileId + '.' + format), // filename
+                                        const fileUniqueName = uuidv4(), // Use additional obfuscation, if needed.
                                             // IP
                                             // AK: alternatively try module 'request-ip'. But this should work already. Also remember, we have X-Real-IP header in Nginx config.
                                             forwardedIps = req.headers['x-forwarded-for'],
@@ -204,28 +214,56 @@ app.route('/snapshot')
                                         dbPool.getConnection((err, db) => {
                                             if (err) throw err;
 
-                                            db.query(`INSERT INTO web_snapshot_api_request_log SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?`,
-                                                [clientId, url, fileId, ip],
-                                                (err) => {
-                                                    if (err) throw err;
+                                            // inserting INACTIVE record
+                                            db.query(`INSERT INTO web_snapshot_api_snapshot SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?,active=0`,
+                                                [clientId, url, fileUniqueName, ip],
+                                                (err, results) => {
+                                                    console.log(results)
+                                                    const releaseMem = () => {
+                                                            db.release();
+                                                            browser.close();
+                                                        };
+
+                                                    if (err) {
+                                                        releaseMem();
+                                                        throw err;
+                                                    }
+
+                                                    const recId = results.insertId, // int
+                                                        targetDir = path.join(process.env.STORAGE_DIR || path.join(__dirname, DEF_STORAGE_DIR),
+                                                                                storageDirName(recId)),
+                                                        fn = path.join(targetDir, fileUniqueName + '.' + format);
+
+                                                    fs.access(targetDir, err => {
+                                                        if (err) { // directory not exists yet
+                                                            fs.mkdir(targetDir, { recursive: true }, err => { // trying to create...
+                                                                if (err) { // error
+                                                                    console.error(`Can't create new directory ${targetDir}`);
+                                                                    releaseMem();
+                                                                    throw err;
+                                                                }
+                                                            });
+                                                        }
+
+                                                        // take a screenshot only after record will be inserted into db.
+                                                        page.screenshot({
+                                                            path: fn,
+                                                            fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
+                                                        }).then(() => {
+                                                            db.query('UDPDATE web_snapshot_api_snapshot SET active=1 WHERE id=' + recId); // safe, int value
+
+                                                            console.log('SNAPSHOT CREATED');
+                                                            res.status(201).json({ url, snapshot: fn });
+                                                        }).catch(errorReason => {
+                                                            console.error('SNAPSHOT FAILURE', errorReason);
+
+                                                            // TODO: think about error 507 Insufficient Storage
+                                                            res.status(507).json({ url, error: 'Insufficient Storage' });
+                                                        }).finally(() => {
+                                                            releaseMem();
+                                                        });
+                                                    });
                                                 });
-                                            db.release();
-                                        });
-
-                                        // take a screenshot
-                                        page.screenshot({
-                                            path: fn,
-                                            fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
-                                        }).then(() => {
-                                            console.log('SNAPSHOT CREATED');
-                                            res.status(201).json({ url, snapshot: fn });
-                                        }).catch(errorReason => {
-                                            console.error('SNAPSHOT FAILURE', errorReason);
-
-                                            // TODO: think about error 507 Insufficient Storage
-                                            res.status(507).json({ url, error: 'Insufficient Storage' });
-                                        }).finally(() => {
-                                            browser.close();
                                         });
 
                                     }).catch(errorReason => {

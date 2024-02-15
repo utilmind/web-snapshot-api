@@ -5,8 +5,8 @@ require(__DIR__.'/utils/mysql_api_client.php');
 $is_local = (__DIR__)[0] !== '/';
 //mdb_api_client::$request_timeout = 20;
 
-$api_url = 'https://utilmind.com/snapshot/';
-//$api_url = 'http://localhost:3000/snapshot/';
+//$api_url = 'https://utilmind.com/snapshot/';
+$api_url = 'http://localhost:3000/snapshot/';
 //$snapshot_url = 'http://totallycertainlyunexistingdomainname/';
 //$snapshot_url = 'http://silkcards.com/';
 $snapshot_url = 'http://appcontrols.com/';
@@ -46,7 +46,7 @@ if (is_int($r)) { // error
             printf('Host \'%s\' is unreachable.', hostname_by_url($api_url));
             break;
         case CURLE_RECV_ERROR:
-            echo 'Failure with receiving network data. Connection lost?';
+            echo 'Failure with receiving network data. Server dropped connection or Internet connection lost.';
             break;
         default:
             echo "ERROR #$r. See what this error mean on https://curl.se/libcurl/c/libcurl-errors.html";
