@@ -12,6 +12,7 @@ Make sure that you have installed Chromium browser and "chrome" NPM module.
  * `sudo npm install chrome`
 
 ## Content
+ * `_db` SQL queries to create mySQL database tables. (MySQL used to index the cached snapshots, keep the log, do client authentication with acces keys stored in db.)
  * `distr` workable REST API server itself.
  * `test` PHP script for testing an API.
 
