@@ -1,7 +1,7 @@
 # web-snapshot-api
  Web Snapshot Maker API
 
-NodeJS + Express framework + Puppeteer
+NodeJS + Express framework + Puppeteer<br />
 Bonus: client app example in PHP (in `test` directory).
 
 ## Disclaimer
