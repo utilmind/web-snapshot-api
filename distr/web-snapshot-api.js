@@ -39,7 +39,7 @@ const appName = 'UtilMind Web Snapshot Maker',
     app = express(),
     port = 3000,
 
-    dbPool = mysql.createPool({
+    dbPool = mysql.createPool({ // the following variables (credentials) described in ".env", which not provided in repository
             host: process.env.DB_HOST,
             user: process.env.DB_USER,
             password: process.env.DB_PASS,
