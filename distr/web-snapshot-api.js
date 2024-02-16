@@ -23,11 +23,6 @@ const appName = 'UtilMind Web Snapshot Maker',
     MIN_ACCESS_KEY_LEN = 32,
 
     DEF_STORAGE_DIR = "_storage", // no trailing slashes please. Alternatively (and preferable) specify STORAGE_DIR constant in .env. If STORAGE_DIR is omitted, current directory path.join(__dirname, DEF_STORAGE_DIR) used as the root directory for storage.
-    DEF_STORAGE_URL = "",    
-
-    // Basic error responses. (No need to list them all, enough are those which used in more than one case.)
-    ERR_INVALID_ACCESS_KEY = 'Invalid access key. You have limited number of attempts before your IP will be banned.',
-
 
     // MODULES
     // -------
@@ -38,7 +33,7 @@ const appName = 'UtilMind Web Snapshot Maker',
     path = require('path'), // for path.join(), using system-specific path delimiter
     fs = require('fs'), // for mkdir()
     { v4: uuidv4 } = require('uuid'),
-    mysql = require('mysql2'),
+    mysql = require('mysql2/promise'),
 
     app = express(),
     port = 3000,
@@ -73,8 +68,69 @@ const appName = 'UtilMind Web Snapshot Maker',
                                 .status(405)
                                 .send('<h1>405 Method Not Allowed</h1>');
 
-// GO!
+    // on Success: .then(clientId, dbConnection)
+    // on Failure: .catch(httpStatus, errorReason)
+    async function authenticate(accessKey, needDb) { // needDb = don't release db connection if TRUE.
 
+            let sho = dbPool.getConnection((err, db) => {
+                console.log('inside', err, db)
+            });
+console.log('nu je', sho)
+return;
+
+        const ERR_INVALID_ACCESS_KEY = 'Invalid access key. You have limited number of attempts before your IP will be banned.';
+
+        // Check Authorzation first. We require explicit "Bearer" scheme, in compliance with https://www.rfc-editor.org/rfc/rfc6750
+        accessKey = accessKey.split(' ', 2); // [Authentication Scheme] [Access Key]. We support Bearer scheme only. Access Key must contain valid base64 characters only.
+
+        if (('Bearer' !== accessKey[0]) // we don't want to check db if key length is less than allowed minimum. And yes, even scheme name ("Bearer") is case sensitive here. Consider this as part of the token :)
+                || !(accessKey = accessKey[1])
+                || !/^[A-Za-z\d+/]+={0,2}$/.test(accessKey)) { // Are characters valid for base64 encoding? (No bad characters? We don't want to check them in DB + keys with non-base64 encoding characters are not really Bearer-compliant.)
+
+            return Promise.reject([403, 'Authorization required by Bearer scheme.']);
+        }
+
+        if (accessKey.length < MIN_ACCESS_KEY_LEN) { // we don't want to check db if key length is less than allowed minimum.
+            // Although we warn user that numer of request attempts are limited, we don't want to log this request in DB, if length is less than required. Just ignore this.
+            return Promise.reject([403, ERR_INVALID_ACCESS_KEY]);
+        }
+
+        let db, // this variable can be returned in case of successful authentication, if needDb is true.
+            clientId; // filled if query was successful
+        try {
+            dbPool.getConnection((err, db) => {
+                console.log('inside', err, db)
+            });
+
+            return Promise.reject([500, "pezdets"]);
+
+            db = await dbPool.getConnection();
+            console.log('kakogo', db, clientId);
+            /*
+                // Use unprepeared query here. It will not be reused within current connection anyway. And accessKey doesn't contain characters that may allow SQL injection.
+            const [rows] = await db.query(`SELECT id FROM web_snapshot_api_client WHERE 'key'=${accessKey} AND active=1`); // safe. We sanitized bad characters above.
+
+            if (rows.length) { // non-fatal error, just correct accessKey not found
+                clientId = rows[0].id;
+                return Promise.resolve(needDb ? [clientId, db] : clientId);
+            }
+
+            console.error('Invalid access key', accessKey); // TODO: do the limit!
+            return Promise.reject([403, ERR_INVALID_ACCESS_KEY]);
+            */
+        }catch (err) {
+            console.error('MySQL error during authentication.', err.message);
+            return Promise.reject([500, "Temporarily can't validate access key."]);
+
+        }finally {
+            if (db && (!needDb || !clientId)) {
+                db.release();
+            }
+        }
+    };
+
+
+// GO!
 
 // Always send these headers in response to any request
 app.use((req, res, next) => { // 3 parameters. Do always.
@@ -133,8 +189,6 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
 */
 app.route('/snapshot')
     .post((req, res) => {
-console.log('query', req.headers.host);
-
         const data = req.body,
             url = data.url;
 
@@ -143,161 +197,153 @@ console.log('query', req.headers.host);
             return res.status(400).json({ error: "'url' is required." });
         }
 
-        // Check Authorzation first. We require explicit "Bearer" scheme, in compliance with https://www.rfc-editor.org/rfc/rfc6750
-        let accessKey = req.headers['authorization'].split(' ', 2); // [Authentication Scheme] [Access Key]. We support Bearer scheme only. Access Key must contain valid base64 characters only.
-        if (('Bearer' !== accessKey[0]) // we don't want to check db if key length is less than allowed minimum. And yes, even scheme name ("Bearer") is case sensitive here. Consider this as part of the token :)
-                || !(accessKey = accessKey[1])
-                || !/^[A-Za-z\d+/]+={0,2}$/.test(accessKey)) { // Are characters valid for base64 encoding? (No bad characters? We don't want to check them in DB + keys with non-base64 encoding characters are not really Bearer-compliant.)
-            return res.status(403).json({ url, error: 'Authorization required by Bearer scheme.' });
-        }
+        authenticate(req.headers['authorization'])
+            .then(clientId => {
+                let width = Math.abs(fl0at(data.width, DEF_PAGE_WIDTH)),
+                    height = Math.abs(fl0at(data.height, DEF_PAGE_HEIGHT)),
+                    format = data.format;
 
-        if ((accessKey.length < MIN_ACCESS_KEY_LEN)) { // we don't want to check db if key length is less than allowed minimum.
-            // Although we warn user that numer of request attempts are limited, we don't want to log this request in DB, if length is less than required. Just ignore this.
-            return res.status(403).json({ url, error: ERR_INVALID_ACCESS_KEY });
-        }
+                if (width > MAX_PAGE_WIDTH) width = MAX_PAGE_WIDTH;
+                if (height > MAX_PAGE_HEIGHT) height = MAX_PAGE_HEIGHT;
+                if (format) {
+                    format.toLowerCase().replace(/[^a-z\d]/g, ''); // strip all non-latin and non-digit characters. But mostly it used to trim possible leading dot.
+                    if ('jpeg' === format) format = 'jpg';
+                    if (-1 === SUPPORTED_IMAGE_FORMATS.indexOf(format)) {
+                        return res.status(400).json({ url, error: `Unsupported image format. Request either: ${SUPPORTED_IMAGE_FORMATS.join(', ')}.` });
+                    }
+                }else {
+                    format = DEF_IMAGE_FORMAT;
+                }
+
+                puppeteer // AK: I don't want to use async/await methods here.
+                    .launch({
+                            headless: 'new',
+                            args: ['--no-sandbox', '--disable-setuid-sandbox'], // required on Linux, OK for Windows too.
+                            ignoreHTTPSErrors: true,
+                            defaultViewport: {
+                                width,
+                                height
+                            },
+                        }).then(browser => browser.newPage()
+                            .then(page => {
+                                // go to target website
+                                console.log('Browsing to', url);
+                                page.goto(url, {
+                                    // wait for content to load
+                                    waitUntil: 'networkidle0' //'domcontentloaded',
+                                    //timeout: 0
+                                }).then(() => {
+                                    console.log('Successful navigation to', url);
+
+                                    const fileUniqueName = uuidv4(), // Use additional obfuscation, if needed.
+                                        // IP
+                                        // AK: alternatively try module 'request-ip'. But this should work already. Also remember, we have X-Real-IP header in Nginx config.
+                                        forwardedIps = req.headers['x-forwarded-for'],
+                                        ip = forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;
+
+                                    dbPool.getConnection((err, db) => {
+                                        if (err) throw err;
+
+                                        // inserting INACTIVE record
+                                        db.query(`INSERT INTO web_snapshot_api_snapshot SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?,active=0`,
+                                            [clientId, url, fileUniqueName, ip],
+                                            (err, results) => {
+                                                console.log(results)
+                                                const releaseMem = () => {
+                                                        db.release();
+                                                        browser.close();
+                                                    };
+
+                                                if (err) {
+                                                    releaseMem();
+                                                    throw err;
+                                                }
+
+                                                const recId = results.insertId, // int
+                                                    targetDir = path.join(process.env.STORAGE_DIR || path.join(__dirname, DEF_STORAGE_DIR),
+                                                                            storageDirName(recId)),
+                                                    fn = path.join(targetDir, fileUniqueName + '.' + format);
+
+                                                fs.access(targetDir, err => {
+                                                    if (err) { // directory not exists yet
+                                                        fs.mkdir(targetDir, { recursive: true }, err => { // trying to create...
+                                                            if (err) { // error
+                                                                console.error(`Can't create new directory ${targetDir}`);
+                                                                releaseMem();
+                                                                throw err;
+                                                            }
+                                                        });
+                                                    }
+
+                                                    // take a screenshot only after record will be inserted into db.
+                                                    page.screenshot({
+                                                        path: fn,
+                                                        fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
+                                                    }).then(() => {
+                                                        db.query('UDPDATE web_snapshot_api_snapshot SET active=1 WHERE id=' + recId); // safe, int value
+
+                                                        console.log('SNAPSHOT CREATED');
+                                                        res.status(201).json({ url, snapshot: fn });
+                                                    }).catch(errorReason => {
+                                                        console.error('SNAPSHOT FAILURE', errorReason);
+
+                                                        // TODO: think about error 507 Insufficient Storage
+                                                        res.status(507).json({ url, error: 'Insufficient Storage' });
+                                                    }).finally(() => {
+                                                        releaseMem();
+                                                    });
+                                                });
+                                            });
+                                    });
+
+                                }).catch(errorReason => {
+                                    console.error('NAVIGATION FAILURE', errorReason);
+                                    // TODO: write into log
+
+                                    browser.close();
+                                    res.status(500).json({ url, error: 'Failed to load URL.' });
+                                });
+                            })
+                            // if new page can't be created for any reason
+                            .catch(errorReason => {
+                                console.error('Failed to open new page', errorReason);
+                                browser.close();
+                                res.status(500).json({ url, error: 'Failed to open new page.' });
+                            })
+                        )
+                        .catch(errorReason => {
+                            console.error('Failed to launch browser', errorReason);
+                            res.status(500).json({ url, error: 'Failed to launch browser.' });
+                        });
+            })
+            .catch((httpStatus, errorReason) => {
+                res.status(httpStatus).json({ url, error: errorReason });
+            });
+    }).all(x => methodNotAllowed);
+
+/*
+    Accepted parameters.
+        url: (string) Optional. If specified, returned list is all snapshots taken from this URL.
+*/
+app.route('/list')
+    .post((req, res) => {
+        const data = req.body,
+            url = data.url;
 
         try {
             dbPool.getConnection((err, db) => {
                 if (err) throw err;
 
-                db.query('SELECT id FROM web_snapshot_api_client WHERE `key`=? AND active=1', [accessKey], (err, row) => {
+                db.query('SELECT id, ' + (url ? 'url, ' : '') + 'snapshot, time FROM web_snapshot_api_client WHERE client= AND active=1', [accessKey], (err, row) => {
                     if (err) throw err;
-
-                    if (!row.length) { // non-fatal error, just access key is invalid.
-                        console.error('Invalid access key', accessKey);
-                        return res.status(403).json({ url, error: ERR_INVALID_ACCESS_KEY }); // TODO: do the limit!
-                    }
-
-                    const clientId = row[0].id;
-                    let width = Math.abs(fl0at(data.width, DEF_PAGE_WIDTH)),
-                        height = Math.abs(fl0at(data.height, DEF_PAGE_HEIGHT)),
-                        format = data.format;
-
-                    if (width > MAX_PAGE_WIDTH) width = MAX_PAGE_WIDTH;
-                    if (height > MAX_PAGE_HEIGHT) height = MAX_PAGE_HEIGHT;
-                    if (format) {
-                        format.toLowerCase().replace(/[^a-z\d]/g, ''); // strip all non-latin and non-digit characters. But mostly it used to trim possible leading dot.
-                        if ('jpeg' === format) format = 'jpg';
-                        if (-1 === SUPPORTED_IMAGE_FORMATS.indexOf(format)) {
-                            return res.status(400).json({ url, error: `Unsupported image format. Request either: ${SUPPORTED_IMAGE_FORMATS.join(', ')}.` });
-                        }
-                    }else {
-                        format = DEF_IMAGE_FORMAT;
-                    }
-
-                    puppeteer // AK: I don't want to use async/await methods here.
-                        .launch({
-                                headless: 'new',
-                                args: ['--no-sandbox', '--disable-setuid-sandbox'], // required on Linux, OK for Windows too.
-                                ignoreHTTPSErrors: true,
-                                defaultViewport: {
-                                    width,
-                                    height
-                                },
-                            }).then(browser => browser.newPage()
-                                .then(page => {
-                                    // go to target website
-                                    console.log('Browsing to', url);
-                                    page.goto(url, {
-                                        // wait for content to load
-                                        waitUntil: 'networkidle0' //'domcontentloaded',
-                                        //timeout: 0
-                                    }).then(() => {
-                                        console.log('Successful navigation to', url);
-
-                                        const fileUniqueName = uuidv4(), // Use additional obfuscation, if needed.
-                                            // IP
-                                            // AK: alternatively try module 'request-ip'. But this should work already. Also remember, we have X-Real-IP header in Nginx config.
-                                            forwardedIps = req.headers['x-forwarded-for'],
-                                            ip = forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;
-
-                                        dbPool.getConnection((err, db) => {
-                                            if (err) throw err;
-
-                                            // inserting INACTIVE record
-                                            db.query(`INSERT INTO web_snapshot_api_snapshot SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?,active=0`,
-                                                [clientId, url, fileUniqueName, ip],
-                                                (err, results) => {
-                                                    console.log(results)
-                                                    const releaseMem = () => {
-                                                            db.release();
-                                                            browser.close();
-                                                        };
-
-                                                    if (err) {
-                                                        releaseMem();
-                                                        throw err;
-                                                    }
-
-                                                    const recId = results.insertId, // int
-                                                        targetDir = path.join(process.env.STORAGE_DIR || path.join(__dirname, DEF_STORAGE_DIR),
-                                                                                storageDirName(recId)),
-                                                        fn = path.join(targetDir, fileUniqueName + '.' + format);
-
-                                                    fs.access(targetDir, err => {
-                                                        if (err) { // directory not exists yet
-                                                            fs.mkdir(targetDir, { recursive: true }, err => { // trying to create...
-                                                                if (err) { // error
-                                                                    console.error(`Can't create new directory ${targetDir}`);
-                                                                    releaseMem();
-                                                                    throw err;
-                                                                }
-                                                            });
-                                                        }
-
-                                                        // take a screenshot only after record will be inserted into db.
-                                                        page.screenshot({
-                                                            path: fn,
-                                                            fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
-                                                        }).then(() => {
-                                                            db.query('UDPDATE web_snapshot_api_snapshot SET active=1 WHERE id=' + recId); // safe, int value
-
-                                                            console.log('SNAPSHOT CREATED');
-                                                            res.status(201).json({ url, snapshot: fn });
-                                                        }).catch(errorReason => {
-                                                            console.error('SNAPSHOT FAILURE', errorReason);
-
-                                                            // TODO: think about error 507 Insufficient Storage
-                                                            res.status(507).json({ url, error: 'Insufficient Storage' });
-                                                        }).finally(() => {
-                                                            releaseMem();
-                                                        });
-                                                    });
-                                                });
-                                        });
-
-                                    }).catch(errorReason => {
-                                        console.error('NAVIGATION FAILURE', errorReason);
-                                        // TODO: write into log
-
-                                        browser.close();
-                                        res.status(500).json({ url, error: 'Failed to load URL.' });
-                                    });
-                                })
-                                // if new page can't be created for any reason
-                                .catch(errorReason => {
-                                    console.error('Failed to open new page', errorReason);
-                                    browser.close();
-                                    res.status(500).json({ url, error: 'Failed to open new page.' });
-                                })
-                            )
-                            .catch(errorReason => {
-                                console.error('Failed to launch browser', errorReason);
-                                res.status(500).json({ url, error: 'Failed to launch browser.' });
-                            });
                 });
-                db.release();
+
             });
         }catch(e) {
-            console.error('MySQL error', err);
+            console.error('/list MySQL error', err);
             res.status(500).json({ url, error: "Temporarily can't validate access key." });
         }
-
-    }).all(x => methodNotAllowed);
-
-
-app.route('/list')
-    .post((req, res) => {
+        
         req.status(503).json({ error: "Not implemented." });
     }).all(x => methodNotAllowed);
 
