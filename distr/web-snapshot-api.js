@@ -33,7 +33,7 @@ const appName = 'UtilMind Web Snapshot Maker',
     path = require('path'), // for path.join(), using system-specific path delimiter
     fs = require('fs'), // for mkdir()
     { v4: uuidv4 } = require('uuid'),
-    mysql = require('mysql2'), // we don't want async/await, would prefer callback style
+    mysql = require('mysql2/promise'), // we don't want async/await, would prefer callback style
 
     app = express(),
     port = 3000,
@@ -92,30 +92,28 @@ const appName = 'UtilMind Web Snapshot Maker',
         //clientId; // filled if query was successful
             
         return dbPool
-            .getConnection()
-            // Use unprepeared query here. It will not be reused within current connection anyway. And accessKey doesn't contain characters that may allow SQL injection.
-            .then(_db => (db = _db)
-                .query(`SELECT id FROM web_snapshot_api_client WHERE 'key'=${accessKey} AND active=1`) // safe. We sanitized bad characters above.
-                .then(([rows]) => {
-                    db.release();
-                    if (rows.length) { // non-fatal error, just correct accessKey not found
-                        clientId = rows[0].id;
-                        return needDb ? [clientId, db] : clientId;
-                    }
+            .getConnection() // Use unprepeared query here. It will not be reused within current connection anyway. And accessKey doesn't contain characters that may allow SQL injection.
+            .then(_db => {
+                console.log('molodets');
+                (db = _db).query(`SELECT id FROM web_snapshot_api_client WHERE 'key'=${accessKey} AND active=1`) // safe. We sanitized bad characters above.
+            })
+            .then(([rows]) => {
+                if (rows.length) { // non-fatal error, just correct accessKey not found
+                    clientId = rows[0].id;
+                    if (!needDb) db.release();
+                    return needDb ? [clientId, db] : clientId;
+                }
 
-                    console.error('Invalid access key', accessKey); // TODO: set up the limit!
-                    return Promise.reject([403, ERR_INVALID_ACCESS_KEY]);
+                db.release();
+                console.error('Invalid access key', accessKey); // TODO: set up the limit!
+                return Promise.reject([403, ERR_INVALID_ACCESS_KEY]);
 
-                }).catch(err => {
-                    if (db) db.release();
+            }).catch(err => {
+                if (db) db.release();
 
-                    console.error('MySQL error during authentication.', err.message);
-                    return Promise.reject([500, "Temporarily can't validate access key."]);
-                }));
-
-            //if (db && (!needDb || !clientId)) {
-            //    db.release();
-            //}
+                console.error('MySQL error during authentication.', err.message);
+                return Promise.reject([500, "Temporarily can't validate access key."]);
+            });
     };
 
 
@@ -188,6 +186,11 @@ app.route('/snapshot')
 
         authenticate(req.headers['authorization'])
             .then(clientId => {
+
+                console.log('OK');
+                res.status(201).json({ url });
+                return;
+
                 let width = Math.abs(fl0at(data.width, DEF_PAGE_WIDTH)),
                     height = Math.abs(fl0at(data.height, DEF_PAGE_HEIGHT)),
                     format = data.format;
