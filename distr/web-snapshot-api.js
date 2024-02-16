@@ -94,7 +94,6 @@ const appName = 'UtilMind Web Snapshot Maker',
         return dbPool
             .getConnection() // Use unprepeared query here. It will not be reused within current connection anyway. And accessKey doesn't contain characters that may allow SQL injection.
             .then(_db => {
-                console.log('molodets');
                 (db = _db).query(`SELECT id FROM web_snapshot_api_client WHERE 'key'=${accessKey} AND active=1`) // safe. We sanitized bad characters above.
             })
             .then(([rows]) => {
