@@ -33,7 +33,7 @@ const appName = 'UtilMind Web Snapshot Maker',
     path = require('path'), // for path.join(), using system-specific path delimiter
     fs = require('fs'), // for mkdir()
     { v4: uuidv4 } = require('uuid'),
-    mysql = require('mysql2/promise'), // we don't want async/await, would prefer callback style
+    mysql = require('mysql2'), // prefer callback style, not /promise
 
     app = express(),
     port = 3000,
@@ -71,48 +71,50 @@ const appName = 'UtilMind Web Snapshot Maker',
     // on Success: .then(clientId, dbConnection)
     // on Failure: .catch(httpStatus, errorReason)
     authenticate = (accessKey, needDb) => { // needDb = don't release db connection if TRUE.
-        const ERR_INVALID_ACCESS_KEY = 'Invalid access key. You have limited number of attempts before your IP will be banned.';
+        return new Promise((resolve, reject) => {
+            const ERR_INVALID_ACCESS_KEY = 'Invalid access key. You have limited number of attempts before your IP will be banned.',
 
-        // Check Authorzation first. We require explicit "Bearer" scheme, in compliance with https://www.rfc-editor.org/rfc/rfc6750
-        accessKey = accessKey.split(' ', 2); // [Authentication Scheme] [Access Key]. We support Bearer scheme only. Access Key must contain valid base64 characters only.
+                mySqlError = err => {
+                    console.error('MySQL error during authentication.', err);
+                    reject([500, "Temporarily can't validate access key."]); // + err.message? But better to not disclose exact error reasons for security purposes.
+                };
 
-        if (('Bearer' !== accessKey[0]) // we don't want to check db if key length is less than allowed minimum. And yes, even scheme name ("Bearer") is case sensitive here. Consider this as part of the token :)
-                || !(accessKey = accessKey[1])
-                || !/^[A-Za-z\d+/]+={0,2}$/.test(accessKey)) { // Are characters valid for base64 encoding? (No bad characters? We don't want to check them in DB + keys with non-base64 encoding characters are not really Bearer-compliant.)
+            // Check Authorzation first. We require explicit "Bearer" scheme, in compliance with https://www.rfc-editor.org/rfc/rfc6750
+            accessKey = accessKey.split(' ', 2); // [Authentication Scheme] [Access Key]. We support Bearer scheme only. Access Key must contain valid base64 characters only.
 
-            return Promise.reject([403, 'Authorization required by Bearer scheme.']);
-        }
+            if (('Bearer' !== accessKey[0]) // we don't want to check db if key length is less than allowed minimum. And yes, even scheme name ("Bearer") is case sensitive here. Consider this as part of the token :)
+                    || !(accessKey = accessKey[1])
+                    || !/^[A-Za-z\d+/]+={0,2}$/.test(accessKey)) { // Are characters valid for base64 encoding? (No bad characters? We don't want to check them in DB + keys with non-base64 encoding characters are not really Bearer-compliant.)
 
-        if (accessKey.length < MIN_ACCESS_KEY_LEN) { // we don't want to check db if key length is less than allowed minimum.
-            // Although we warn user that numer of request attempts are limited, we don't want to log this request in DB, if length is less than required. Just ignore this.
-            return Promise.reject([403, ERR_INVALID_ACCESS_KEY]);
-        }
-
-        let db; // this variable can be returned in case of successful authentication, if needDb is true.
-        //clientId; // filled if query was successful
+                return reject([403, 'Authorization required by Bearer scheme.']);
+            }
             
-        return dbPool
-            .getConnection() // Use unprepeared query here. It will not be reused within current connection anyway. And accessKey doesn't contain characters that may allow SQL injection.
-            .then(_db => {
-                (db = _db).query(`SELECT id FROM web_snapshot_api_client WHERE 'key'=${accessKey} AND active=1`) // safe. We sanitized bad characters above.
-            })
-            .then(([rows]) => {
-                if (rows.length) { // non-fatal error, just correct accessKey not found
-                    clientId = rows[0].id;
-                    if (!needDb) db.release();
-                    return needDb ? [clientId, db] : clientId;
-                }
+            if (accessKey.length < MIN_ACCESS_KEY_LEN) { // we don't want to check db if key length is less than allowed minimum.
+                // Although we warn user that numer of request attempts are limited, we don't want to log this request in DB, if length is less than required. Just ignore this.
+                return reject([403, ERR_INVALID_ACCESS_KEY]); // it's obviously invalid. But we return the same error after validation, if the key not found.
+            }
+            
+            dbPool.getConnection((err, db) => {
+                if (err) return mySqlError(err);
 
-                db.release();
-                console.error('Invalid access key', accessKey); // TODO: set up the limit!
-                return Promise.reject([403, ERR_INVALID_ACCESS_KEY]);
+                // Use unprepeared query here. It will not be reused within current connection anyway. And accessKey doesn't contain characters that may allow SQL injection.
+                db.query(`SELECT id FROM web_snapshot_api_client WHERE \`key\'="${accessKey}" AND active=1`, // safe. We sanitized bad characters above.
+                        (err, rows, rowsLen) => {
 
-            }).catch(err => {
-                if (db) db.release();
+                    if (!(rowsLen = rows.length) || !needDb || err) { // cases when we need to release db connection
+                        db.release();
+                        if (err) return mySqlError(err);
 
-                console.error('MySQL error during authentication.', err.message);
-                return Promise.reject([500, "Temporarily can't validate access key."]);
+                        if (!rowsLen) { // non-fatal error, just correct accessKey not found
+                            console.error('Invalid access key', accessKey); // TODO: set up the limit!
+                            return reject([403, ERR_INVALID_ACCESS_KEY]);
+                        }
+                    }
+
+                    resolve([rows[0].id, db]);
+                });
             });
+        });
     };
 
 
@@ -173,6 +175,7 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
         Successfull response is HTTP code 201 (snapshot created).
         Unsuccessful -- 400, 403, 500, 507, depending on the cause of the error.
 */
+dbPool.end();
 app.route('/snapshot')
     .post((req, res) => {
         const data = req.body,
@@ -238,8 +241,8 @@ app.route('/snapshot')
                                         // inserting INACTIVE record
                                         db.query(`INSERT INTO web_snapshot_api_snapshot SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?,active=0`,
                                             [clientId, url, fileUniqueName, ip],
-                                            (err, results) => {
-                                                console.log(results)
+                                            (err, rows) => {
+                                                console.log(rows)
                                                 const releaseMem = () => {
                                                         db.release();
                                                         browser.close();
@@ -250,7 +253,7 @@ app.route('/snapshot')
                                                     throw err;
                                                 }
 
-                                                const recId = results.insertId, // int
+                                                const recId = rows.insertId, // int
                                                     targetDir = path.join(process.env.STORAGE_DIR || path.join(__dirname, DEF_STORAGE_DIR),
                                                                             storageDirName(recId)),
                                                     fn = path.join(targetDir, fileUniqueName + '.' + format);
@@ -307,8 +310,8 @@ app.route('/snapshot')
                             res.status(500).json({ url, error: 'Failed to launch browser.' });
                         });
             })
-            .catch((httpStatus, errorReason) => {
-                res.status(httpStatus).json({ url, error: errorReason });
+            .catch(err => {
+                res.status(err[0]).json({ url, error: err[1] });
             });
     }).all(x => methodNotAllowed);
 
