@@ -33,7 +33,7 @@ const appName = 'UtilMind Web Snapshot Maker',
     path = require('path'), // for path.join(), using system-specific path delimiter
     fs = require('fs'), // for mkdir()
     { v4: uuidv4 } = require('uuid'),
-    mysql = require('mysql2/promise'),
+    mysql = require('mysql2'), // we don't want async/await, would prefer callback style
 
     app = express(),
     port = 3000,
@@ -70,14 +70,7 @@ const appName = 'UtilMind Web Snapshot Maker',
 
     // on Success: .then(clientId, dbConnection)
     // on Failure: .catch(httpStatus, errorReason)
-    async function authenticate(accessKey, needDb) { // needDb = don't release db connection if TRUE.
-
-            let sho = dbPool.getConnection((err, db) => {
-                console.log('inside', err, db)
-            });
-console.log('nu je', sho)
-return;
-
+    authenticate = (accessKey, needDb) => { // needDb = don't release db connection if TRUE.
         const ERR_INVALID_ACCESS_KEY = 'Invalid access key. You have limited number of attempts before your IP will be banned.';
 
         // Check Authorzation first. We require explicit "Bearer" scheme, in compliance with https://www.rfc-editor.org/rfc/rfc6750
@@ -95,38 +88,34 @@ return;
             return Promise.reject([403, ERR_INVALID_ACCESS_KEY]);
         }
 
-        let db, // this variable can be returned in case of successful authentication, if needDb is true.
-            clientId; // filled if query was successful
-        try {
-            dbPool.getConnection((err, db) => {
-                console.log('inside', err, db)
-            });
+        let db; // this variable can be returned in case of successful authentication, if needDb is true.
+        //clientId; // filled if query was successful
+            
+        return dbPool
+            .getConnection()
+            // Use unprepeared query here. It will not be reused within current connection anyway. And accessKey doesn't contain characters that may allow SQL injection.
+            .then(_db => (db = _db)
+                .query(`SELECT id FROM web_snapshot_api_client WHERE 'key'=${accessKey} AND active=1`) // safe. We sanitized bad characters above.
+                .then(([rows]) => {
+                    db.release();
+                    if (rows.length) { // non-fatal error, just correct accessKey not found
+                        clientId = rows[0].id;
+                        return needDb ? [clientId, db] : clientId;
+                    }
 
-            return Promise.reject([500, "pezdets"]);
+                    console.error('Invalid access key', accessKey); // TODO: set up the limit!
+                    return Promise.reject([403, ERR_INVALID_ACCESS_KEY]);
 
-            db = await dbPool.getConnection();
-            console.log('kakogo', db, clientId);
-            /*
-                // Use unprepeared query here. It will not be reused within current connection anyway. And accessKey doesn't contain characters that may allow SQL injection.
-            const [rows] = await db.query(`SELECT id FROM web_snapshot_api_client WHERE 'key'=${accessKey} AND active=1`); // safe. We sanitized bad characters above.
+                }).catch(err => {
+                    if (db) db.release();
 
-            if (rows.length) { // non-fatal error, just correct accessKey not found
-                clientId = rows[0].id;
-                return Promise.resolve(needDb ? [clientId, db] : clientId);
-            }
+                    console.error('MySQL error during authentication.', err.message);
+                    return Promise.reject([500, "Temporarily can't validate access key."]);
+                }));
 
-            console.error('Invalid access key', accessKey); // TODO: do the limit!
-            return Promise.reject([403, ERR_INVALID_ACCESS_KEY]);
-            */
-        }catch (err) {
-            console.error('MySQL error during authentication.', err.message);
-            return Promise.reject([500, "Temporarily can't validate access key."]);
-
-        }finally {
-            if (db && (!needDb || !clientId)) {
-                db.release();
-            }
-        }
+            //if (db && (!needDb || !clientId)) {
+            //    db.release();
+            //}
     };
 
 
