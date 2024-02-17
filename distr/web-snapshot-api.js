@@ -188,7 +188,7 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
                     NOTE: garbage collector removes mages once per day.
 
     Response:
-        Successfull response is HTTP code 201 (snapshot created).
+        Successful response is HTTP code 201 (snapshot created).
             Returns:
                 id: unique ID of snapshot
                 url: final target URL after browser redirects. In most cases it not differs from the request url.
