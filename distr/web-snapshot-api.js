@@ -24,6 +24,7 @@ const appName = 'UtilMind Web Snapshot Maker',
     
     // db fields lengths
     MAX_URL_LENGTH = 255,
+    MIN_URL_LENGTH = 10, // we require at least http://a.x for request URL. Otherwise we don't even want to open browser to navigate
 
     DEF_STORAGE_DIR = "_storage", // no trailing slashes please. Alternatively (and preferable) specify STORAGE_DIR constant in .env. If STORAGE_DIR is omitted, current directory path.join(__dirname, DEF_STORAGE_DIR) used as the root directory for storage.
 
@@ -42,7 +43,7 @@ const appName = 'UtilMind Web Snapshot Maker',
     port = 3000,
 
     // common error reasons
-    ERR_B_ERROR = 'Temporary db error.',
+    ERR_DB_ERROR = 'Temporary db error.',
 
     // MySQL uses varaibles from .env. BTW we also can specify directory to store snapshot files as STORAGE_DIR constant. 
     dbPool = mysql.createPool({ // the following variables (credentials) described in ".env", which not provided in repository
@@ -62,23 +63,25 @@ const appName = 'UtilMind Web Snapshot Maker',
 
     // PRIVATE FUNCS
     // -------------
-    // same as parseFloat, but returns 0 if parseFloat returns non-numerical value
-    fl0at = (v, def) => isNaN(v = parseFloat(v))
-                            ? (undefined !== def ? def : 0) // "" is good value too. Don't replace with 0 if "" set.
-                            : v,
-
-    storageDirName = fileId => (Math.floor(fileId / 1000) * 1000).toString(),
-
     // The only response in text/html format. Others are JSONs.
     methodNotAllowed = x => res.set('Content-Type', 'text/html')
                                 .status(405)
                                 .send('<h1>405 Method Not Allowed</h1>'),
 
+    // same as parseFloat, but returns 0 if parseFloat returns non-numerical value
+    fl0at = (v, def) => isNaN(v = parseFloat(v))
+                            ? (undefined !== def ? def : 0) // "" is good value too. Don't replace with 0 if "" set.
+                            : v,
+
+    storageDirId = fileId => (Math.floor(fileId / 1000) * 1000).toString(),
+    getStorageDir = fileId => path.join(process.env.STORAGE_DIR || path.join(__dirname, DEF_STORAGE_DIR),
+                                        storageDirId(fileId)),
+
     getIp = req => { // Alternatively try module 'request-ip'. But this should work already. Also we have X-Real-IP header in Nginx config.
         const forwardedIps = req.headers['x-forwarded-for'];
         return forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;
-    },                                
-
+    },
+    
     // on Success: .then(clientId, dbConnection)
     // on Failure: .catch(httpStatus, errorReason)
     authenticate = (accessKey, needDb) => { // needDb = don't release db connection if TRUE.
@@ -199,7 +202,7 @@ app.route('/snapshot')
             url = data.url;
 
         // We don't want to connect to mySQL if URL not provided. Certanily bad request.
-        if (!url) {
+        if (url.length < MIN_URL_LENGTH) {
             return res.status(400).json({ error: "'url' is required." });
         }
 
@@ -273,8 +276,7 @@ app.route('/snapshot')
                                             if (err) return dbError(err);
 
                                             const recId = rows.insertId, // int
-                                                targetDir = path.join(process.env.STORAGE_DIR || path.join(__dirname, DEF_STORAGE_DIR),
-                                                                        storageDirName(recId)),
+                                                targetDir = getStorageDir(recId),
                                                 fn = path.join(targetDir, fileUniqueName + '.' + format),
 
                                                 response = {
@@ -370,7 +372,8 @@ app.route('/list')
                           FROM web_snapshot_api_snapshot
                           WHERE client=${clientId} AND active=1 AND (expire=0 OR expire<CURRENT_TIMESTAMP)`, (err, rows) => { // safe query
                     if (err) {
-                        req.status(500).json({ error: ERR_B_ERROR });
+                        db.release();
+                        return req.status(500).json({ error: ERR_DB_ERROR });
                     }
 
                     const list = [];
@@ -393,33 +396,71 @@ app.route('/list')
         snapshot unique id: (string) Required.
 
     Response: 200 OK on success, 4XX or 5XX on failure.
+
+    IMPORTANT NOTE!
+        * Clients identified by accessKey can delete only their own snapshots. Other snapshots, created by another clients can't be deleted, server returns 400 Bad Request.
 */
 
 app.route('/remove')
     .post((req, res) => {
+        const data = req.body,
+            snapshotId = parseInt(data.id) || 0;
+
+        if (!snapshotId) {
+            return res.status(400).json({ error: "'id' is required." });
+        }
+
         authenticate(req.headers['authorization'], true)
             .then((clientId, db) => {
                 [clientId, db] = clientId;
-                const data = req.body,
-                    snapshotId = data.id;
 
-                // Update the db record
-                db.query(`UPDATE web_snapshot_api_snapshot SET active=0 WHERE id=`, (err, rows) => { // safe query
+                // Get the snapshot filename + check, whether it belongs to requesting client.
+                db.query(`SELECT snapshot, format, client, active FROM web_snapshot_api_snapshot WHERE id=${snapshotId} AND client=${clientId}`, (err, rows) => { // safe query
                     if (err) {
-                        req.status(500).json({ error: ERR_B_ERROR });
+                        db.release();
+                        return req.status(500).json({ error: ERR_DB_ERROR });
                     }
 
-                    res.status(204); // no content
+                    if (!rows.length) {
+                        db.release();
+                        return res.status(400).json({ error: "Snapshot doesn't exists." }); // ...or created by another client
+                    }
+
+                    const fn = path.join(getStorageDir(snapshotId), rows[0].snapshot + '.' + rows[0].format);
+                    console.log('filename', fn);
+
+                    if (!rows[0].active) {
+                        db.release();
+                        // try to unlink file anyway!
+                        fs.unlink(fn, err => {}); // we don't care of result here. We almost sure that file was already deleted before and it returns 'ENOENT: no such file or directory'.
+                        return res.status(400).json({ error: "Snapshot already deleted." });
+                    }
+                    
+                    // Update the db record
+                    db.query(`UPDATE web_snapshot_api_snapshot SET active=0 WHERE id=${snapshotId}`, (err, rows) => { // safe query
+                        db.release();
+
+                        if (err) {
+                            return req.status(500).json({ error: ERR_DB_ERROR });
+                        }
+
+                        fs.unlink(fn, err => {
+                            if (err) {
+                                // check, maybe we tried to delete unexisting file? Then it's okay. If file is not there, then it's not an error.
+                                fs.access(fn, fs.constants.F_OK, (accessErr) => {
+                                    if (!accessErr) { // if file still exists, then it can't be deleted. Return error.
+                                        return res.status(500).json({ error: `Record deactivated in DB, but can't delete snapshot file from the storage. ${err.message}` });
+                                    }
+
+                                    // otherwise we don't care if file doesn't exists in storage.
+                                    res.status(204).send(); // no content = OK.
+                                });
+                            }else {
+                                res.status(204).send(); // no content = OK.
+                            }
+                        });
+                    });
                 });
-
-                // Unlink the file
-
-                /* TODO:
-                    1. wrap removal into stand-alone function
-                    2. return 204 w/o content.
-                */
-                console.log('remove', clientId);
-
             }) // unsuccessful authentication
             .catch(err => {
                 res.status(err[0]).json({ error: err[1] });

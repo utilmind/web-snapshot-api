@@ -22,8 +22,10 @@ function hostname_by_url(string $url): string {
 
 
 // GO!
-$r = mdb_api_client::query_url_status($api_url . 'snapshot/',
+$r = mdb_api_client::query_url_status($api_url . 'remove/', //'snapshot/',
         json_encode([
+            'id' => 1,
+
             'url' => $snapshot_url, // required parameter
             'width' => 1800, //px
             'format' => 'jpg',
