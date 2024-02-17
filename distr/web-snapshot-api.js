@@ -21,6 +21,9 @@ const appName = 'UtilMind Web Snapshot Maker',
     MAX_PAGE_HEIGHT = 19200, // 4k width * 5
 
     MIN_ACCESS_KEY_LEN = 32,
+    
+    // db fields lengths
+    MAX_URL_LENGTH = 255,
 
     DEF_STORAGE_DIR = "_storage", // no trailing slashes please. Alternatively (and preferable) specify STORAGE_DIR constant in .env. If STORAGE_DIR is omitted, current directory path.join(__dirname, DEF_STORAGE_DIR) used as the root directory for storage.
 
@@ -37,6 +40,9 @@ const appName = 'UtilMind Web Snapshot Maker',
 
     app = express(),
     port = 3000,
+
+    // common error reasons
+    ERR_B_ERROR = 'Temporary db error.',
 
     // MySQL uses varaibles from .env. BTW we also can specify directory to store snapshot files as STORAGE_DIR constant. 
     dbPool = mysql.createPool({ // the following variables (credentials) described in ".env", which not provided in repository
@@ -163,7 +169,9 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
         height: (float) Default is DEF_PAGE_HEIGHT.
         full_page: (bool) Default is true/1. Set to false/0 to disable.
         format: (string) Default is DEF_IMAGE_FORMAT. Can be eighter PNG, JPG or WEBP. Case insensitive. Filename created with lowercase extension.
-        get: (string) Default is 'url'. Other methods not implemented on 2024-02-14. TODO: either URL to the filename with snapshot (url) OR base64-encoded binary data of the image (base64).
+        get: (string) Default is 'url', to return the snapshot URL.
+                * Other methods not implemented on 2024-02-14. TODO: get either URL to the filename with snapshot (url) OR base64-encoded binary data of the image (base64).
+                * Or somehow else protect the file from non-authorized downloading (maybe require additional request headers).
 
     This server holds the snapshot in its storage. The following parameters allow to manage snapshot in storage.
         valid_time: (int) in seconds. Default is 7 * 24 * 60 * 60 (eg 7 days = 604800 seconds).
@@ -178,6 +186,11 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
 
     Response:
         Successfull response is HTTP code 201 (snapshot created).
+            Returns:
+                id: unique ID of snapshot
+                url: final target URL after browser redirects. In most cases it not differs from the request url.
+                snapshot: URL to the snapshot image. Can be downloaded from this location.
+
         Failure -- 4XX or 5XX, depending on the cause of the error (4XX are client side, 5XX are server side errors).
 */
 app.route('/snapshot')
@@ -204,7 +217,7 @@ app.route('/snapshot')
                     format.toLowerCase().replace(/[^a-z\d]/g, ''); // strip all non-latin and non-digit characters. But mostly it used to trim possible leading dot.
                     if ('jpeg' === format) format = 'jpg';
                     if (-1 === SUPPORTED_IMAGE_FORMATS.indexOf(format)) {
-                        return res.status(400).json({ url, error: `Unsupported image format. Request either: ${SUPPORTED_IMAGE_FORMATS.join(', ')}.` });
+                        return res.status(400).json({ error: `Unsupported image format. Request either: ${SUPPORTED_IMAGE_FORMATS.join(', ')}.` });
                     }
                 }else {
                     format = DEF_IMAGE_FORMAT;
@@ -238,22 +251,23 @@ app.route('/snapshot')
                                             dbError = err => {
                                                 releaseMem();
                                                 console.error('MySQL error.', err);
-                                                res.status(500).json({ url, error: 'DB error.' });
+                                                res.status(500).json({ error: 'DB error.' });
                                             },
 
                                             storageError = err => {
                                                 releaseMem();
                                                 console.error('Disk error.', err);
-                                                res.status(507).json({ url, error: 'Insufficient storage' });
+                                                res.status(507).json({ error: 'Insufficient storage' });
                                             };
 
                                         if (err) return dbError(err);
 
-                                        const fileUniqueName = uuidv4(); // Use additional obfuscation, if needed.
+                                        const fileUniqueName = uuidv4(), // Use additional obfuscation, if needed.
+                                            targetUrl = page.url().slice(0, MAX_URL_LENGTH); // this is final URL after all possible redirections
 
                                         // inserting INACTIVE record
                                         db.query(`INSERT INTO web_snapshot_api_snapshot SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?,active=0`,
-                                                [clientId, url, fileUniqueName, getIp(req)],
+                                                [clientId, url.slice(0, MAX_URL_LENGTH), fileUniqueName, getIp(req)],
                                                 (err, rows) => {
 
                                             if (err) return dbError(err);
@@ -262,6 +276,12 @@ app.route('/snapshot')
                                                 targetDir = path.join(process.env.STORAGE_DIR || path.join(__dirname, DEF_STORAGE_DIR),
                                                                         storageDirName(recId)),
                                                 fn = path.join(targetDir, fileUniqueName + '.' + format),
+
+                                                response = {
+                                                        id: recId,
+                                                        url: targetUrl,
+                                                        snapshot: fn,
+                                                    },
 
                                                 takeSnapshot = () => {
                                                     // take a screenshot only after record will be inserted into db.
@@ -275,15 +295,20 @@ app.route('/snapshot')
                                                             if (err) return dbError(err);
 
                                                             console.log('SNAPSHOT CREATED');
-                                                            res.status(201).json({ url, snapshot: fn });
+                                                            res.status(201).json(response);
                                                         });
                                                     }).catch(errorReason => {
                                                         console.error('SNAPSHOT FAILURE', errorReason);
-                                                        res.status(507).json({ url, error: 'Insufficient Storage' });
+                                                        response.error = 'Insufficient Storage';
+                                                        res.status(507).json(response);
                                                     }).finally(() => {
                                                         releaseMem();
                                                     });
                                                 };
+
+                                            if (targetUrl !== url) { // we don't care about result or errors here. Just execute and forget.
+                                                db.query('INSERT INTO web_snapshot_api_snapshot_url (id, url) VALUES(?, ?)', [recId, targetUrl]);
+                                            }
 
                                             fs.access(targetDir, err => {
                                                 if (err) { // directory not exists yet
@@ -306,46 +331,46 @@ app.route('/snapshot')
                                     browser.close();
 
                                     console.error('NAVIGATION FAILURE', errorReason);
-                                    res.status(500).json({ url, error: 'Failed to load URL.' });
+                                    res.status(500).json({ error: 'Failed to load URL.' });
                                 });
                             }) // browser.newPage() failure
                             .catch(errorReason => {
                                 browser.close();
 
                                 console.error('Failed to open new page', errorReason);
-                                res.status(500).json({ url, error: 'Failed to open new page.' });
+                                res.status(500).json({ error: 'Failed to open new page.' });
                             })
                         ) // puppeteer.launch() failure
                         .catch(errorReason => {
                             console.error('Failed to launch browser', errorReason);
-                            res.status(500).json({ url, error: 'Failed to launch browser.' });
+                            res.status(500).json({ error: 'Failed to launch browser.' });
                         });
             }) // unsuccessful authentication
             .catch(err => {
-                res.status(err[0]).json({ url, error: err[1] });
+                res.status(err[0]).json({ error: err[1] });
             });
     }).all(x => methodNotAllowed);
 
 /*
-    Accepted parameters.
+    Accepted parameters:
         url: (string) Optional. If specified, returned list is all snapshots taken from this URL.
 
     Response: 200 OK on success, 4XX or 5XX on failure.
 */
 app.route('/list')
     .post((req, res) => {
-        const data = req.body,
-            url = data.url;
-
         authenticate(req.headers['authorization'], true)
             .then((clientId, db) => {
                 [clientId, db] = clientId;
+
+                const data = req.body,
+                    url = data.url;
 
                 db.query(`SELECT id, ${url ? 'url, ' : ''}snapshot, time
                           FROM web_snapshot_api_snapshot
                           WHERE client=${clientId} AND active=1 AND (expire=0 OR expire<CURRENT_TIMESTAMP)`, (err, rows) => { // safe query
                     if (err) {
-                        req.status(500).json({url, error: "Temporarily can't validate access key." });
+                        req.status(500).json({ error: ERR_B_ERROR });
                     }
 
                     const list = [];
@@ -354,26 +379,50 @@ app.route('/list')
                         list.push(row);
                     }
 
-                    res.status(200).json({ url, list });
+                    res.status(200).json({ list });
                 });
             }) // unsuccessful authentication
             .catch(err => {
-                res.status(err[0]).json({ url, error: err[1] });
+                res.status(err[0]).json({ error: err[1] });
             });
 
     }).all(x => methodNotAllowed);
+
+/*
+    Accepted parameters:
+        snapshot unique id: (string) Required.
+
+    Response: 200 OK on success, 4XX or 5XX on failure.
+*/
 
 app.route('/remove')
     .post((req, res) => {
         authenticate(req.headers['authorization'], true)
             .then((clientId, db) => {
                 [clientId, db] = clientId;
+                const data = req.body,
+                    snapshotId = data.id;
 
+                // Update the db record
+                db.query(`UPDATE web_snapshot_api_snapshot SET active=0 WHERE id=`, (err, rows) => { // safe query
+                    if (err) {
+                        req.status(500).json({ error: ERR_B_ERROR });
+                    }
+
+                    res.status(204); // no content
+                });
+
+                // Unlink the file
+
+                /* TODO:
+                    1. wrap removal into stand-alone function
+                    2. return 204 w/o content.
+                */
                 console.log('remove', clientId);
 
             }) // unsuccessful authentication
             .catch(err => {
-                res.status(err[0]).json({ url, error: err[1] });
+                res.status(err[0]).json({ error: err[1] });
             });
 
     }).all(x => methodNotAllowed);

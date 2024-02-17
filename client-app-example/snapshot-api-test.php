@@ -9,7 +9,8 @@ $is_local = (__DIR__)[0] !== '/';
 $api_url = 'http://localhost:3000/';
 //$snapshot_url = 'http://totallycertainlyunexistingdomainname/';
 //$snapshot_url = 'http://silkcards.com/';
-$snapshot_url = 'https://google.com/';
+//$snapshot_url = 'https://google.com/';
+$snapshot_url = 'http://utilmind.com/demos/2024/redirect-to-appcontrols';
 $authorization_token = 'LeT9Lc9wsqnLZPJ2mX7MYVk2mPHExRm5'; // This is temporary token. To guaranties that exactly this token will work in the future.
 
 
