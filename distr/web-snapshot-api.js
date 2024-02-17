@@ -21,7 +21,7 @@ const appName = 'UtilMind Web Snapshot Maker',
     MAX_PAGE_HEIGHT = 19200, // 4k width * 5
 
     MIN_ACCESS_KEY_LEN = 32,
-    
+
     // db fields lengths
     MAX_URL_LENGTH = 255,
     MIN_URL_LENGTH = 10, // we require at least http://a.x for request URL. Otherwise we don't even want to open browser to navigate
@@ -45,7 +45,7 @@ const appName = 'UtilMind Web Snapshot Maker',
     // common error reasons
     ERR_DB_ERROR = 'Temporary db error.',
 
-    // MySQL uses varaibles from .env. BTW we also can specify directory to store snapshot files as STORAGE_DIR constant. 
+    // MySQL uses varaibles from .env. BTW we also can specify directory to store snapshot files as STORAGE_DIR constant.
     dbPool = mysql.createPool({ // the following variables (credentials) described in ".env", which not provided in repository
             host: process.env.DB_HOST,
             user: process.env.DB_USER,
@@ -81,7 +81,7 @@ const appName = 'UtilMind Web Snapshot Maker',
         const forwardedIps = req.headers['x-forwarded-for'];
         return forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;
     },
-    
+
     // on Success: .then(clientId, dbConnection)
     // on Failure: .catch(httpStatus, errorReason)
     authenticate = (accessKey, needDb) => { // needDb = don't release db connection if TRUE.
@@ -102,12 +102,12 @@ const appName = 'UtilMind Web Snapshot Maker',
 
                 return reject([403, 'Authorization required by Bearer scheme.']);
             }
-            
+
             if (accessKey.length < MIN_ACCESS_KEY_LEN) { // we don't want to check db if key length is less than allowed minimum.
                 // Although we warn user that numer of request attempts are limited, we don't want to log this request in DB, if length is less than required. Just ignore this.
                 return reject([403, ERR_INVALID_ACCESS_KEY]); // it's obviously invalid. But we return the same error after validation, if the key not found.
             }
-            
+
             dbPool.getConnection((err, db) => {
                 if (err) return dbError(err);
 
@@ -177,11 +177,11 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
                 * Or somehow else protect the file from non-authorized downloading (maybe require additional request headers).
 
     This server holds the snapshot in its storage. The following parameters allow to manage snapshot in storage.
-        valid_time: (int) in seconds. Default is 7 * 24 * 60 * 60 (eg 7 days = 604800 seconds).
-                    Timeout in seconds of validity of existing snapshot. Set to 0 always retreive fresh screenshot, or 3600 (60*60 seconds) to retreive fresh screenshot not often than once per hour.
-
         overwrite: (bool) Default is FALSE. Overwrite LAST existing (previous) snapshot of an URL, or create new record.
                     TRUE = overwrite last snapshot, FALSE (default) = create a new record, leaving existing snapshot(s) in archive.
+
+        valid_time: (int) in seconds. Default is 7 * 24 * 60 * 60 (eg 7 days = 604800 seconds).
+                    Timeout in seconds of validity of existing snapshot. Set to 0 always retreive fresh screenshot, or 3600 (60*60 seconds) to retreive fresh screenshot not often than once per hour.
 
         expire: (int OR string) with the Unix timestamp OR DATE in YYYY-MM-DD HH:MM:SS(+TZ) format. Default timzone is UTC (GMT+0).
                     Timestamp when the file should be expired and deleted from server storage.
@@ -435,7 +435,7 @@ app.route('/remove')
                         fs.unlink(fn, err => {}); // we don't care of result here. We almost sure that file was already deleted before and it returns 'ENOENT: no such file or directory'.
                         return res.status(400).json({ error: "Snapshot already deleted." });
                     }
-                    
+
                     // Update the db record
                     db.query(`UPDATE web_snapshot_api_snapshot SET active=0 WHERE id=${snapshotId}`, (err, rows) => { // safe query
                         db.release();
