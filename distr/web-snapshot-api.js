@@ -98,7 +98,7 @@ const appName = 'UtilMind Web Snapshot Maker',
                 if (err) return mySqlError(err);
 
                 // Use unprepeared query here. It will not be reused within current connection anyway. And accessKey doesn't contain characters that may allow SQL injection.
-                db.query(`SELECT id FROM web_snapshot_api_client WHERE \`key\'="${accessKey}" AND active=1`, // safe. We sanitized bad characters above.
+                db.query(`SELECT id FROM web_snapshot_api_client WHERE token="${accessKey}" AND active=1`, // safe. We sanitized bad characters above.
                         (err, rows, rowsLen) => {
 
                     if (!(rowsLen = rows.length) || !needDb || err) { // cases when we need to release db connection
@@ -175,7 +175,6 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
         Successfull response is HTTP code 201 (snapshot created).
         Unsuccessful -- 400, 403, 500, 507, depending on the cause of the error.
 */
-dbPool.end();
 app.route('/snapshot')
     .post((req, res) => {
         const data = req.body,
@@ -188,10 +187,7 @@ app.route('/snapshot')
 
         authenticate(req.headers['authorization'])
             .then(clientId => {
-
-                console.log('OK');
-                res.status(201).json({ url });
-                return;
+                clientId = clientId[0];
 
                 let width = Math.abs(fl0at(data.width, DEF_PAGE_WIDTH)),
                     height = Math.abs(fl0at(data.height, DEF_PAGE_HEIGHT)),
