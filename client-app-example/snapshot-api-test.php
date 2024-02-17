@@ -9,7 +9,7 @@ $is_local = (__DIR__)[0] !== '/';
 $api_url = 'http://localhost:3000/';
 //$snapshot_url = 'http://totallycertainlyunexistingdomainname/';
 //$snapshot_url = 'http://silkcards.com/';
-$snapshot_url = 'http://appcontrols.com/';
+$snapshot_url = 'https://google.com/';
 $authorization_token = 'LeT9Lc9wsqnLZPJ2mX7MYVk2mPHExRm5'; // This is temporary token. To guaranties that exactly this token will work in the future.
 
 
@@ -21,7 +21,7 @@ function hostname_by_url(string $url): string {
 
 
 // GO!
-$r = mdb_api_client::query_url_status($api_url . 'list/',
+$r = mdb_api_client::query_url_status($api_url . 'snapshot/',
         json_encode([
             'url' => $snapshot_url, // required parameter
             'width' => 1800, //px

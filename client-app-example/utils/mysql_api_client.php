@@ -91,7 +91,7 @@ class mdb_api_client extends mdb_data {
                 curl_setopt($ch, CURLOPT_NOBODY, true);
 
                 // Execute the request.
-                $response = curl_exec($ch);  // AK: $response can be empty string. While it's not FALSE it's okay. Unusual but normal. It's valid to respond with empty body.
+                $response = curl_exec($ch);  // AK: $response can be empty string. While it's not FALSE it's okay. It's valid to respond with empty body, especially if response status is 204 No Content.
 
                 // Check if cURL request was successful
                 if (false === $response) { // FAILURE. Return negative error code
@@ -163,7 +163,7 @@ class mdb_api_client extends mdb_data {
                 //curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5); // If expected to call with specific PROXY type
 
                 // Execute the request.
-                $response_body = curl_exec($ch); // AK: $response_body can be empty string. While it's not FALSE it's okay. Unusual but normal. It's valid to respond with empty body.
+                $response_body = curl_exec($ch); // AK: $response_body can be empty string. While it's not FALSE it's okay. It's valid to respond with empty body, especially if response status is 204 No Content.
 
                 // Check if cURL request was successful
                 if (false === $response_body) {

@@ -66,7 +66,12 @@ const appName = 'UtilMind Web Snapshot Maker',
     // The only response in text/html format. Others are JSONs.
     methodNotAllowed = x => res.set('Content-Type', 'text/html')
                                 .status(405)
-                                .send('<h1>405 Method Not Allowed</h1>');
+                                .send('<h1>405 Method Not Allowed</h1>'),
+
+    getIp = req => { // Alternatively try module 'request-ip'. But this should work already. Also we have X-Real-IP header in Nginx config.
+        const forwardedIps = req.headers['x-forwarded-for'];
+        return forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;
+    },                                
 
     // on Success: .then(clientId, dbConnection)
     // on Failure: .catch(httpStatus, errorReason)
@@ -74,7 +79,7 @@ const appName = 'UtilMind Web Snapshot Maker',
         return new Promise((resolve, reject) => {
             const ERR_INVALID_ACCESS_KEY = 'Invalid access key. You have limited number of attempts before your IP will be banned.',
 
-                mySqlError = err => {
+                dbError = err => {
                     console.error('MySQL error during authentication.', err);
                     reject([500, "Temporarily can't validate access key."]); // + err.message? But better to not disclose exact error reasons for security purposes.
                 };
@@ -95,7 +100,7 @@ const appName = 'UtilMind Web Snapshot Maker',
             }
             
             dbPool.getConnection((err, db) => {
-                if (err) return mySqlError(err);
+                if (err) return dbError(err);
 
                 // Use unprepeared query here. It will not be reused within current connection anyway. And accessKey doesn't contain characters that may allow SQL injection.
                 db.query(`SELECT id FROM web_snapshot_api_client WHERE token="${accessKey}" AND active=1`, // safe. We sanitized bad characters above.
@@ -103,7 +108,7 @@ const appName = 'UtilMind Web Snapshot Maker',
 
                     if (!(rowsLen = rows.length) || !needDb || err) { // cases when we need to release db connection
                         db.release();
-                        if (err) return mySqlError(err);
+                        if (err) return dbError(err);
 
                         if (!rowsLen) { // non-fatal error, just correct accessKey not found
                             console.error('Invalid access key', accessKey); // TODO: set up the limit!
@@ -216,7 +221,6 @@ app.route('/snapshot')
                             },
                         }).then(browser => browser.newPage()
                             .then(page => {
-                                // go to target website
                                 console.log('Browsing to', url);
                                 page.goto(url, {
                                     // wait for content to load
@@ -225,82 +229,93 @@ app.route('/snapshot')
                                 }).then(() => {
                                     console.log('Successful navigation to', url);
 
-                                    const fileUniqueName = uuidv4(), // Use additional obfuscation, if needed.
-                                        // IP
-                                        // AK: alternatively try module 'request-ip'. But this should work already. Also remember, we have X-Real-IP header in Nginx config.
-                                        forwardedIps = req.headers['x-forwarded-for'],
-                                        ip = forwardedIps ? forwardedIps.split(',')[0] : req.socket.remoteAddress;
-
                                     dbPool.getConnection((err, db) => {
-                                        if (err) throw err;
+                                        const releaseMem = () => {
+                                                browser.close();
+                                                if (db) db.release();
+                                            },
+
+                                            dbError = err => {
+                                                releaseMem();
+                                                console.error('MySQL error.', err);
+                                                res.status(500).json({ url, error: 'DB error.' });
+                                            },
+
+                                            storageError = err => {
+                                                releaseMem();
+                                                console.error('Disk error.', err);
+                                                res.status(507).json({ url, error: 'Insufficient storage' });
+                                            };
+
+                                        if (err) return dbError(err);
+
+                                        const fileUniqueName = uuidv4(); // Use additional obfuscation, if needed.
 
                                         // inserting INACTIVE record
                                         db.query(`INSERT INTO web_snapshot_api_snapshot SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?,active=0`,
-                                            [clientId, url, fileUniqueName, ip],
-                                            (err, rows) => {
-                                                console.log(rows)
-                                                const releaseMem = () => {
-                                                        db.release();
-                                                        browser.close();
-                                                    };
+                                                [clientId, url, fileUniqueName, getIp(req)],
+                                                (err, rows) => {
 
-                                                if (err) {
-                                                    releaseMem();
-                                                    throw err;
-                                                }
+                                            if (err) return dbError(err);
 
-                                                const recId = rows.insertId, // int
-                                                    targetDir = path.join(process.env.STORAGE_DIR || path.join(__dirname, DEF_STORAGE_DIR),
-                                                                            storageDirName(recId)),
-                                                    fn = path.join(targetDir, fileUniqueName + '.' + format);
+                                            const recId = rows.insertId, // int
+                                                targetDir = path.join(process.env.STORAGE_DIR || path.join(__dirname, DEF_STORAGE_DIR),
+                                                                        storageDirName(recId)),
+                                                fn = path.join(targetDir, fileUniqueName + '.' + format),
 
-                                                fs.access(targetDir, err => {
-                                                    if (err) { // directory not exists yet
-                                                        fs.mkdir(targetDir, { recursive: true }, err => { // trying to create...
-                                                            if (err) { // error
-                                                                console.error(`Can't create new directory ${targetDir}`);
-                                                                releaseMem();
-                                                                throw err;
-                                                            }
-                                                        });
-                                                    }
-
+                                                takeSnapshot = () => {
                                                     // take a screenshot only after record will be inserted into db.
                                                     page.screenshot({
                                                         path: fn,
                                                         fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
                                                     }).then(() => {
-                                                        db.query('UDPDATE web_snapshot_api_snapshot SET active=1 WHERE id=' + recId); // safe, int value
+                                                        db.query('UPDATE web_snapshot_api_snapshot SET active=1 WHERE id=' + recId, // safe, int value
+                                                                (err, rows) => {
 
-                                                        console.log('SNAPSHOT CREATED');
-                                                        res.status(201).json({ url, snapshot: fn });
+                                                            if (err) return dbError(err);
+
+                                                            console.log('SNAPSHOT CREATED');
+                                                            res.status(201).json({ url, snapshot: fn });
+                                                        });
                                                     }).catch(errorReason => {
                                                         console.error('SNAPSHOT FAILURE', errorReason);
-
-                                                        // TODO: think about error 507 Insufficient Storage
                                                         res.status(507).json({ url, error: 'Insufficient Storage' });
                                                     }).finally(() => {
                                                         releaseMem();
                                                     });
-                                                });
+                                                };
+
+                                            fs.access(targetDir, err => {
+                                                if (err) { // directory not exists yet
+                                                    fs.mkdir(targetDir, { recursive: true }, err => { // trying to create...
+                                                        if (err) {
+                                                            storageError(err); // `Can't create new directory ${targetDir}`
+                                                        }else {
+                                                            takeSnapshot();
+                                                        }
+                                                    });
+                                                }else {
+                                                    takeSnapshot();
+                                                }
                                             });
+                                        });
                                     });
 
-                                }).catch(errorReason => {
-                                    console.error('NAVIGATION FAILURE', errorReason);
-                                    // TODO: write into log
-
+                                }) // page.goto() failure
+                                .catch(errorReason => {
                                     browser.close();
+
+                                    console.error('NAVIGATION FAILURE', errorReason);
                                     res.status(500).json({ url, error: 'Failed to load URL.' });
                                 });
-                            })
-                            // if new page can't be created for any reason
+                            }) // browser.newPage() failure
                             .catch(errorReason => {
-                                console.error('Failed to open new page', errorReason);
                                 browser.close();
+
+                                console.error('Failed to open new page', errorReason);
                                 res.status(500).json({ url, error: 'Failed to open new page.' });
                             })
-                        )
+                        ) // puppeteer.launch() failure
                         .catch(errorReason => {
                             console.error('Failed to launch browser', errorReason);
                             res.status(500).json({ url, error: 'Failed to launch browser.' });
@@ -328,15 +343,18 @@ app.route('/list')
 
                 db.query(`SELECT id, ${url ? 'url, ' : ''}snapshot, time
                           FROM web_snapshot_api_snapshot
-                          WHERE client=${clientId} AND active=1 AND (expire=0 OR expire<CURRENT_TIMESTAMP)`, (err, rows) => {
+                          WHERE client=${clientId} AND active=1 AND (expire=0 OR expire<CURRENT_TIMESTAMP)`, (err, rows) => { // safe query
                     if (err) {
                         req.status(500).json({url, error: "Temporarily can't validate access key." });
                     }
 
-                    for (let i in rows) {
-
+                    const list = [];
+                    for (let row of rows) {
+                        console.log(row);
+                        list.push(row);
                     }
-                    req.status(200, );
+
+                    res.status(200).json({ url, list });
                 });
             }) // unsuccessful authentication
             .catch(err => {
