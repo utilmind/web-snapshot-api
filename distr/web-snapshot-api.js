@@ -427,7 +427,6 @@ app.route('/remove')
                     }
 
                     const fn = path.join(getStorageDir(snapshotId), rows[0].snapshot + '.' + rows[0].format);
-                    console.log('filename', fn);
 
                     if (!rows[0].active) {
                         db.release();
