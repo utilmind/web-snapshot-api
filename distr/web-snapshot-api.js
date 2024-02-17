@@ -173,7 +173,7 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
 
     Response:
         Successfull response is HTTP code 201 (snapshot created).
-        Unsuccessful -- 400, 403, 500, 507, depending on the cause of the error.
+        Failure -- 4XX or 5XX, depending on the cause of the error (4XX are client side, 5XX are server side errors).
 */
 app.route('/snapshot')
     .post((req, res) => {
@@ -305,7 +305,7 @@ app.route('/snapshot')
                             console.error('Failed to launch browser', errorReason);
                             res.status(500).json({ url, error: 'Failed to launch browser.' });
                         });
-            })
+            }) // unsuccessful authentication
             .catch(err => {
                 res.status(err[0]).json({ url, error: err[1] });
             });
@@ -314,32 +314,50 @@ app.route('/snapshot')
 /*
     Accepted parameters.
         url: (string) Optional. If specified, returned list is all snapshots taken from this URL.
+
+    Response: 200 OK on success, 4XX or 5XX on failure.
 */
 app.route('/list')
     .post((req, res) => {
         const data = req.body,
             url = data.url;
 
-        try {
-            dbPool.getConnection((err, db) => {
-                if (err) throw err;
+        authenticate(req.headers['authorization'], true)
+            .then((clientId, db) => {
+                [clientId, db] = clientId;
 
-                db.query('SELECT id, ' + (url ? 'url, ' : '') + 'snapshot, time FROM web_snapshot_api_client WHERE client= AND active=1', [accessKey], (err, row) => {
-                    if (err) throw err;
+                db.query(`SELECT id, ${url ? 'url, ' : ''}snapshot, time
+                          FROM web_snapshot_api_snapshot
+                          WHERE client=${clientId} AND active=1 AND (expire=0 OR expire<CURRENT_TIMESTAMP)`, (err, rows) => {
+                    if (err) {
+                        req.status(500).json({url, error: "Temporarily can't validate access key." });
+                    }
+
+                    for (let i in rows) {
+
+                    }
+                    req.status(200, );
                 });
-
+            }) // unsuccessful authentication
+            .catch(err => {
+                res.status(err[0]).json({ url, error: err[1] });
             });
-        }catch(e) {
-            console.error('/list MySQL error', err);
-            res.status(500).json({ url, error: "Temporarily can't validate access key." });
-        }
-        
-        req.status(503).json({ error: "Not implemented." });
+
     }).all(x => methodNotAllowed);
 
 app.route('/remove')
     .post((req, res) => {
-        req.status(503).json({ error: "Not implemented." });
+        authenticate(req.headers['authorization'], true)
+            .then((clientId, db) => {
+                [clientId, db] = clientId;
+
+                console.log('remove', clientId);
+
+            }) // unsuccessful authentication
+            .catch(err => {
+                res.status(err[0]).json({ url, error: err[1] });
+            });
+
     }).all(x => methodNotAllowed);
 
 // Start server

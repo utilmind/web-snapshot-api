@@ -5,8 +5,8 @@ require(__DIR__.'/utils/mysql_api_client.php');
 $is_local = (__DIR__)[0] !== '/';
 //mdb_api_client::$request_timeout = 20;
 
-//$api_url = 'https://utilmind.com/snapshot/';
-$api_url = 'http://localhost:3000/snapshot/';
+//$api_url = 'https://utilmind.com/';
+$api_url = 'http://localhost:3000/';
 //$snapshot_url = 'http://totallycertainlyunexistingdomainname/';
 //$snapshot_url = 'http://silkcards.com/';
 $snapshot_url = 'http://appcontrols.com/';
@@ -21,7 +21,7 @@ function hostname_by_url(string $url): string {
 
 
 // GO!
-$r = mdb_api_client::query_url_status($api_url,
+$r = mdb_api_client::query_url_status($api_url . 'list/',
         json_encode([
             'url' => $snapshot_url, // required parameter
             'width' => 1800, //px
