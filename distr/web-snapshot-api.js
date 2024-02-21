@@ -187,6 +187,8 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
                     2 = overwrite last snapshot record, but rename the file, return the new file name (as URL) in 'snapshot' field.
             * NOTE:  it creates new record anyway if no existing entries are found.
 
+    ----- TODO -----
+
         valid_time: (int) in seconds. Default is 7 * 24 * 60 * 60 (eg 7 days = 604800 seconds).
                     Timeout in seconds of validity of existing snapshot. Set to 0 always retreive fresh screenshot, or 3600 (60*60 seconds) to retreive fresh screenshot not often than once per hour.
 
@@ -358,7 +360,7 @@ app.route('/snapshot')
 
                                         if (isOverwrite) {
                                             // Find existing record and pick the last one (even if it's inactive). If there is none -- insert a new record.
-                                            db.query(`SELECT id, format, snapshot FROM ${DB_TABLE_SNAPSHOT} WHERE client='${clientId}' AND url=? ORDER BY id DESC LIMIT 1`, // TODO: think about indexation of 'url' field (?)
+                                            db.query(`SELECT id, format, snapshot FROM ${DB_TABLE_SNAPSHOT} WHERE client='${clientId}' AND url=? ORDER BY id DESC LIMIT 1`,
                                                     [requestUrl],
                                                     (err, rows) => {
                                                         if (err) return dbError(err);
