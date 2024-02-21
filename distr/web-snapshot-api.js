@@ -183,7 +183,7 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
     This server holds the snapshot in its storage. The following parameters allow to manage snapshot in storage.
         overwrite: (int) Default is 0 (false). Any non-0 value overwrites LAST existing (previous) snapshot of an URL, even if it's inactive (removed before).
                     0 (default) = create a new record, leaving existing snapshot(s) in archive.
-                    1 = overwrite last snapshot record, and store the file under existing name on server. (If image format changes, it returns filename with requested extension, so de-facto file being renamed in storage.)
+                    1 = overwrite last snapshot record, and store the file under existing name on server. (However if image format changes, it returns filename with requested extension, so de-facto file being renamed in storage.)
                     2 = overwrite last snapshot record, but rename the file, return the new file name (as URL) in 'snapshot' field.
             * NOTE:  it creates new record anyway, if none existing records found.
 
