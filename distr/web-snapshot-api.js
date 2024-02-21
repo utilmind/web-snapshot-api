@@ -28,6 +28,10 @@ const appName = 'UtilMind Web Snapshot Maker',
 
     DEF_STORAGE_DIR = "_storage", // no trailing slashes please. Alternatively (and preferable) specify STORAGE_DIR constant in .env. If STORAGE_DIR is omitted, current directory path.join(__dirname, DEF_STORAGE_DIR) used as the root directory for storage.
 
+    DB_TABLE_CLIENT = 'web_snapshot_api_client',
+    DB_TABLE_SNAPSHOT = 'web_snapshot_api_snapshot',
+    DB_TABLE_SNAPSHOT_URL = 'web_snapshot_api_snapshot_url', // if original URL had redirects, this is target URL from where the snapshot taken. Filled only if target URL differs from original.
+
     // MODULES
     // -------
     express = require('express'),
@@ -112,7 +116,7 @@ const appName = 'UtilMind Web Snapshot Maker',
                 if (err) return dbError(err);
 
                 // Use unprepeared query here. It will not be reused within current connection anyway. And accessKey doesn't contain characters that may allow SQL injection.
-                db.query(`SELECT id FROM web_snapshot_api_client WHERE token="${accessKey}" AND active=1`, // safe. We sanitized bad characters above.
+                db.query(`SELECT id FROM ${DB_TABLE_CLIENT} WHERE token="${accessKey}" AND active=1`, // safe. We sanitized bad characters above.
                         (err, rows, rowsLen) => {
 
                     if (!(rowsLen = rows.length) || !needDb || err) { // cases when we need to release db connection
@@ -177,8 +181,11 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
                 * Or somehow else protect the file from non-authorized downloading (maybe require additional request headers).
 
     This server holds the snapshot in its storage. The following parameters allow to manage snapshot in storage.
-        overwrite: (bool) Default is FALSE. Overwrite LAST existing (previous) snapshot of an URL, or create new record.
-                    TRUE = overwrite last snapshot, FALSE (default) = create a new record, leaving existing snapshot(s) in archive.
+        overwrite: (int) Default is 0 (false). Any non-0 value overwrites LAST existing (previous) snapshot of an URL, or create new record.
+                    0 (default) = create a new record, leaving existing snapshot(s) in archive.
+                    1 = overwrite last snapshot record, and store the file under existing name on server.
+                    2 = overwrite last snapshot record, but rename the file, return the new file name (as URL) in 'snapshot' field.
+            * NOTE:  it creates new record anyway, if none existing records found.
 
         valid_time: (int) in seconds. Default is 7 * 24 * 60 * 60 (eg 7 days = 604800 seconds).
                     Timeout in seconds of validity of existing snapshot. Set to 0 always retreive fresh screenshot, or 3600 (60*60 seconds) to retreive fresh screenshot not often than once per hour.
@@ -202,7 +209,7 @@ app.route('/snapshot')
             url = data.url;
 
         // We don't want to connect to mySQL if URL not provided. Certanily bad request.
-        if (url.length < MIN_URL_LENGTH) {
+        if (('string' != typeof url) || (url.length < MIN_URL_LENGTH)) {
             return res.status(400).json({ error: "'url' is required." });
         }
 
@@ -265,67 +272,95 @@ app.route('/snapshot')
 
                                         if (err) return dbError(err);
 
-                                        const fileUniqueName = uuidv4(), // Use additional obfuscation, if needed.
-                                            targetUrl = page.url().slice(0, MAX_URL_LENGTH); // this is final URL after all possible redirections
+                                        const requestUrl = url.slice(0, MAX_URL_LENGTH),
+                                            targetUrl = page.url().slice(0, MAX_URL_LENGTH), // this is final URL after all possible redirections
 
-                                        // inserting INACTIVE record
-                                        db.query(`INSERT INTO web_snapshot_api_snapshot SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?,active=0`,
-                                                [clientId, url.slice(0, MAX_URL_LENGTH), fileUniqueName, getIp(req)],
-                                                (err, rows) => {
+                                            makeSnapshotRecord = (recId, snapshotName, isOverwrite) => { // recId is (int).
+                                                const targetDir = getStorageDir(recId),
+                                                    fn = path.join(targetDir, snapshotName + '.' + format),
 
-                                            if (err) return dbError(err);
+                                                    response = {
+                                                            id: recId,
+                                                            url: targetUrl,
+                                                            snapshot: fn,
+                                                        },
 
-                                            const recId = rows.insertId, // int
-                                                targetDir = getStorageDir(recId),
-                                                fn = path.join(targetDir, fileUniqueName + '.' + format),
+                                                    takeSnapshot = () => {
+                                                        // take a screenshot only after record will be inserted into db.
+                                                        page.screenshot({
+                                                            path: fn,
+                                                            fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
+                                                        }).then(() => {
+                                                            db.query(`UPDATE ${DB_TABLE_SNAPSHOT} SET active=1 WHERE id=${recId}`, // safe, int value
+                                                                    (err, rows) => {
 
-                                                response = {
-                                                        id: recId,
-                                                        url: targetUrl,
-                                                        snapshot: fn,
-                                                    },
+                                                                if (err) return dbError(err);
 
-                                                takeSnapshot = () => {
-                                                    // take a screenshot only after record will be inserted into db.
-                                                    page.screenshot({
-                                                        path: fn,
-                                                        fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
-                                                    }).then(() => {
-                                                        db.query('UPDATE web_snapshot_api_snapshot SET active=1 WHERE id=' + recId, // safe, int value
-                                                                (err, rows) => {
-
-                                                            if (err) return dbError(err);
-
-                                                            console.log('SNAPSHOT CREATED');
-                                                            res.status(201).json(response);
+                                                                console.log('SNAPSHOT CREATED');
+                                                                res.status(201).json(response);
+                                                            });
+                                                        }).catch(errorReason => {
+                                                            console.error('SNAPSHOT FAILURE', errorReason);
+                                                            response.error = 'Insufficient Storage';
+                                                            res.status(507).json(response);
+                                                        }).finally(() => {
+                                                            releaseMem();
                                                         });
-                                                    }).catch(errorReason => {
-                                                        console.error('SNAPSHOT FAILURE', errorReason);
-                                                        response.error = 'Insufficient Storage';
-                                                        res.status(507).json(response);
-                                                    }).finally(() => {
-                                                        releaseMem();
-                                                    });
-                                                };
+                                                    };
 
-                                            if (targetUrl !== url) { // we don't care about result or errors here. Just execute and forget.
-                                                db.query('INSERT INTO web_snapshot_api_snapshot_url (id, url) VALUES(?, ?)', [recId, targetUrl]);
-                                            }
+                                                if (targetUrl !== url) { // we don't care about result or errors here. Just execute and forget.
+                                                    db.query(`INSERT INTO ${DB_TABLE_SNAPSHOT_URL} (id, url) VALUES(?, ?)` +
+                                                        (isOverwrite ? ' ON DUPLICATE KEY UPDATE url=VALUES(url)' : ''),
+                                                        [recId, targetUrl]);
+                                                }
 
-                                            fs.access(targetDir, err => {
-                                                if (err) { // directory not exists yet
-                                                    fs.mkdir(targetDir, { recursive: true }, err => { // trying to create...
-                                                        if (err) {
-                                                            storageError(err); // `Can't create new directory ${targetDir}`
-                                                        }else {
-                                                            takeSnapshot();
+                                                // check whether target directory exists. If not -- recursively create the directory structure.
+                                                fs.access(targetDir, err => {
+                                                    if (err) { // directory not exists yet
+                                                        fs.mkdir(targetDir, { recursive: true }, err => { // trying to create...
+                                                            if (err) {
+                                                                storageError(err); // `Can't create new directory ${targetDir}`
+                                                            }else {
+                                                                takeSnapshot();
+                                                            }
+                                                        });
+                                                    }else {
+                                                        takeSnapshot();
+                                                    }
+                                                });
+                                            },
+
+                                            makeNewSnapshot = () => {
+                                                const snapshotName = uuidv4(); // think about additional obfuscation
+                                                // Inserting INACTIVE record, which will be activated once snapshot will be successfully completed.
+                                                db.query(`INSERT INTO ${DB_TABLE_SNAPSHOT} SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?,active=0`,
+                                                        [clientId, requestUrl, snapshotName, getIp(req)],
+                                                        (err, rows) => {
+                                                            if (err) return dbError(err);
+                                                            makeSnapshotRecord(rows.insertId, snapshotName); // no overwrite, always new record
+                                                        });
+                                            },
+
+                                            // reuse last record for requested URL or create a new one?
+                                            isOverwrite = parseInt(data.overwrite) || 0;
+
+                                        if (isOverwrite) {
+                                            // Find existing record and pick the last one (even if it's inactive). If there is none -- insert a new record.
+                                            db.query(`SELECT id, snapshot FROM ${DB_TABLE_SNAPSHOT} WHERE client='${clientId}' AND url=? ORDER BY id DESC LIMIT 1`, // TODO: think about indexation of 'url' field (?)
+                                                    [requestUrl],
+                                                    (err, rows) => {
+                                                        if (err) return dbError(err);
+
+                                                        if (rows.length) { // reuse last existing record
+                                                            makeSnapshotRecord(rows[0].id, 1 === isOverwrite ? rows[0].snapshot : uuidv4(), isOverwrite);
+
+                                                        }else { // no record? create a new one
+                                                            makeNewSnapshot();
                                                         }
                                                     });
-                                                }else {
-                                                    takeSnapshot();
-                                                }
-                                            });
-                                        });
+                                        }else {
+                                            makeNewSnapshot();
+                                        }
                                     });
 
                                 }) // page.goto() failure
@@ -369,8 +404,8 @@ app.route('/list')
                     url = data.url;
 
                 db.query(`SELECT id, ${url ? 'url, ' : ''}snapshot, time
-                          FROM web_snapshot_api_snapshot
-                          WHERE client=${clientId} AND active=1 AND (expire=0 OR expire<CURRENT_TIMESTAMP)`, (err, rows) => { // safe query
+                        FROM ${DB_TABLE_SNAPSHOT}
+                        WHERE client=${clientId} AND active=1 AND (expire=0 OR expire<CURRENT_TIMESTAMP)`, (err, rows) => { // safe query
                     if (err) {
                         db.release();
                         return req.status(500).json({ error: ERR_DB_ERROR });
@@ -415,7 +450,7 @@ app.route('/remove')
                 [clientId, db] = clientId;
 
                 // Get the snapshot filename + check, whether it belongs to requesting client.
-                db.query(`SELECT snapshot, format, client, active FROM web_snapshot_api_snapshot WHERE id=${snapshotId} AND client=${clientId}`, (err, rows) => { // safe query
+                db.query(`SELECT snapshot, format, client, active FROM ${DB_TABLE_SNAPSHOT} WHERE id=${snapshotId} AND client=${clientId}`, (err, rows) => { // safe query
                     if (err) {
                         db.release();
                         return req.status(500).json({ error: ERR_DB_ERROR });
@@ -436,7 +471,7 @@ app.route('/remove')
                     }
 
                     // Update the db record
-                    db.query(`UPDATE web_snapshot_api_snapshot SET active=0 WHERE id=${snapshotId}`, (err, rows) => { // safe query
+                    db.query(`UPDATE ${DB_TABLE_SNAPSHOT} SET active=0 WHERE id=${snapshotId}`, (err, rows) => { // safe query
                         db.release();
 
                         if (err) {
