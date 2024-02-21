@@ -275,26 +275,34 @@ app.route('/snapshot')
                                         const requestUrl = url.slice(0, MAX_URL_LENGTH),
                                             targetUrl = page.url().slice(0, MAX_URL_LENGTH), // this is final URL after all possible redirections
 
-                                            makeSnapshotRecord = (recId, snapshotName, isOverwrite) => { // recId is (int).
+                                            makeSnapshotRecord = (recId, newSnapshotName, existingSnapshotName, isOverwrite) => { // recId is (int).
                                                 const targetDir = getStorageDir(recId),
-                                                    fn = path.join(targetDir, snapshotName + '.' + format),
+                                                    newFn = path.join(targetDir, newSnapshotName + '.' + format),
 
                                                     response = {
                                                             id: recId,
                                                             url: targetUrl,
-                                                            snapshot: fn,
+                                                            snapshot: newFn,
                                                         },
 
                                                     takeSnapshot = () => {
                                                         // take a screenshot only after record will be inserted into db.
                                                         page.screenshot({
-                                                            path: fn,
+                                                            path: newFn,
                                                             fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
                                                         }).then(() => {
-                                                            db.query(`UPDATE ${DB_TABLE_SNAPSHOT} SET active=1 WHERE id=${recId}`, // safe, int value
+                                                            db.query(`UPDATE ${DB_TABLE_SNAPSHOT} SET ${
+                                                                            1 === isOverwrite
+                                                                                ? `snapshot='${newSnapshotName}',` // all snapshot names are SQL-safe
+                                                                                : ''
+                                                                        } active=1 WHERE id=${recId}`, // safe, int value
                                                                     (err, rows) => {
 
                                                                 if (err) return dbError(err);
+
+                                                                if (existingSnapshotName && existingSnapshotName !== newSnapshotName) {
+                                                                    fs.unlink(existingSnapshotName, err => {}); // we don't care of result here. It's not critical, but should succeed.
+                                                                }
 
                                                                 console.log('SNAPSHOT CREATED');
                                                                 res.status(201).json(response);
@@ -309,9 +317,8 @@ app.route('/snapshot')
                                                     };
 
                                                 if (targetUrl !== url) { // we don't care about result or errors here. Just execute and forget.
-                                                    db.query(`INSERT INTO ${DB_TABLE_SNAPSHOT_URL} (id, url) VALUES(?, ?)` +
-                                                        (isOverwrite ? ' ON DUPLICATE KEY UPDATE url=VALUES(url)' : ''),
-                                                        [recId, targetUrl]);
+                                                    db.query(`INSERT INTO ${DB_TABLE_SNAPSHOT_URL} (id, url) VALUES(${recId}, '${mysql.escapeId(targetUrl)}')` +
+                                                        (isOverwrite ? ' ON DUPLICATE KEY UPDATE url=VALUES(url)' : ''));
                                                 }
 
                                                 // check whether target directory exists. If not -- recursively create the directory structure.
@@ -331,13 +338,14 @@ app.route('/snapshot')
                                             },
 
                                             makeNewSnapshot = () => {
-                                                const snapshotName = uuidv4(); // think about additional obfuscation
+                                                const snapshotName = uuidv4(); // ATTN! All snapshot names should be SQL-safe, so can be used in queries w/o escaping! TODO: Think about additional obfuscation
+
                                                 // Inserting INACTIVE record, which will be activated once snapshot will be successfully completed.
-                                                db.query(`INSERT INTO ${DB_TABLE_SNAPSHOT} SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot=?, time=CURRENT_TIMESTAMP, ip=?,active=0`,
-                                                        [clientId, requestUrl, snapshotName, getIp(req)],
+                                                db.query(`INSERT INTO ${DB_TABLE_SNAPSHOT} SET client=?, url=?, width=${width}, height=${height}, format='${format}', snapshot='${snapshotName}', time=CURRENT_TIMESTAMP, ip=?,active=0`,
+                                                        [clientId, requestUrl, getIp(req)],
                                                         (err, rows) => {
                                                             if (err) return dbError(err);
-                                                            makeSnapshotRecord(rows.insertId, snapshotName); // no overwrite, always new record
+                                                            makeSnapshotRecord(rows.insertId, snapshotName); // no old filename, no overwrite, it's always new record
                                                         });
                                             },
 
@@ -352,7 +360,10 @@ app.route('/snapshot')
                                                         if (err) return dbError(err);
 
                                                         if (rows.length) { // reuse last existing record
-                                                            makeSnapshotRecord(rows[0].id, 1 === isOverwrite ? rows[0].snapshot : uuidv4(), isOverwrite);
+                                                            makeSnapshotRecord(rows[0].id,
+                                                                    1 === isOverwrite ? rows[0].snapshot : uuidv4(), // new filename. ATTN! All snapshot names should be SQL-safe, so can be used in queries w/o escaping!
+                                                                    rows[0].snapshot, // existing filename
+                                                                    isOverwrite);
 
                                                         }else { // no record? create a new one
                                                             makeNewSnapshot();
