@@ -185,7 +185,7 @@ app.use((error, req, res, next) => { // 4 parameters, 'error' is first, so this 
                     0 (default) = create a new record, leaving existing snapshot(s) in archive.
                     1 = overwrite last snapshot record, and store the file under existing name on server. (However if image format changes, it returns filename with requested extension, so de-facto file being renamed in storage.)
                     2 = overwrite last snapshot record, but rename the file, return the new file name (as URL) in 'snapshot' field.
-            * NOTE:  it creates new record anyway, if none existing records found.
+            * NOTE:  it creates new record anyway if no existing entries are found.
 
         valid_time: (int) in seconds. Default is 7 * 24 * 60 * 60 (eg 7 days = 604800 seconds).
                     Timeout in seconds of validity of existing snapshot. Set to 0 always retreive fresh screenshot, or 3600 (60*60 seconds) to retreive fresh screenshot not often than once per hour.
