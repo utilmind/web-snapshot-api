@@ -27,8 +27,8 @@ $r = mdb_api_client::query_url_status($api_url . 'snapshot/', // 'remove/',
             //'id' => 1, // for /remove example
 
             'url' => $snapshot_url . '/554', // required parameter
-            'width' => 1800, //px
-            'format' => 'jpg',
+            'width' => 1600, //px
+            'format' => 'png',
             'overwrite' => 1,
 
         ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_IGNORE),

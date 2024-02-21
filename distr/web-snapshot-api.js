@@ -275,7 +275,7 @@ app.route('/snapshot')
                                         const requestUrl = url.slice(0, MAX_URL_LENGTH),
                                             targetUrl = page.url().slice(0, MAX_URL_LENGTH), // this is final URL after all possible redirections
 
-                                            makeSnapshotRecord = (recId, newSnapshotName, existingSnapshotName, isOverwrite) => { // recId is (int).
+                                            makeSnapshotRecord = (recId, newSnapshotName, fileNameToUnlink, isOverwrite) => { // recId is (int).
                                                 const targetDir = getStorageDir(recId),
                                                     newFn = path.join(targetDir, newSnapshotName + '.' + format),
 
@@ -292,16 +292,20 @@ app.route('/snapshot')
                                                             fullPage: !!data.fullpage // AK: !! used for security, to get only boolean value
                                                         }).then(() => {
                                                             db.query(`UPDATE ${DB_TABLE_SNAPSHOT} SET ${
-                                                                            1 === isOverwrite
-                                                                                ? `snapshot='${newSnapshotName}',` // all snapshot names are SQL-safe
+                                                                            isOverwrite // if we reusing existing record, dimensions and format can be changed.
+                                                                                ? `width=${width}, height=${height}, format='${format}', ${
+                                                                                        1 === isOverwrite
+                                                                                            ? '' // same filename when overwrite. Extension can be changed though
+                                                                                            : `snapshot='${newSnapshotName}', ` // all snapshot names are SQL-safe
+                                                                                        }`
                                                                                 : ''
-                                                                        } active=1 WHERE id=${recId}`, // safe, int value
+                                                                        }active=1 WHERE id=${recId}`, // safe, int value
                                                                     (err, rows) => {
 
                                                                 if (err) return dbError(err);
 
-                                                                if (existingSnapshotName && existingSnapshotName !== newSnapshotName) {
-                                                                    fs.unlink(existingSnapshotName, err => {}); // we don't care of result here. It's not critical, but should succeed.
+                                                                if (fileNameToUnlink) {
+                                                                    fs.unlink(path.join(targetDir, fileNameToUnlink), err => {}); // we don't care of result here. It's not critical, but should succeed.
                                                                 }
 
                                                                 console.log('SNAPSHOT CREATED');
@@ -354,15 +358,15 @@ app.route('/snapshot')
 
                                         if (isOverwrite) {
                                             // Find existing record and pick the last one (even if it's inactive). If there is none -- insert a new record.
-                                            db.query(`SELECT id, snapshot FROM ${DB_TABLE_SNAPSHOT} WHERE client='${clientId}' AND url=? ORDER BY id DESC LIMIT 1`, // TODO: think about indexation of 'url' field (?)
+                                            db.query(`SELECT id, format, snapshot FROM ${DB_TABLE_SNAPSHOT} WHERE client='${clientId}' AND url=? ORDER BY id DESC LIMIT 1`, // TODO: think about indexation of 'url' field (?)
                                                     [requestUrl],
                                                     (err, rows) => {
                                                         if (err) return dbError(err);
 
                                                         if (rows.length) { // reuse last existing record
                                                             makeSnapshotRecord(rows[0].id,
-                                                                    1 === isOverwrite ? rows[0].snapshot : uuidv4(), // new filename. ATTN! All snapshot names should be SQL-safe, so can be used in queries w/o escaping!
-                                                                    rows[0].snapshot, // existing filename
+                                                                    1 === isOverwrite ? rows[0].snapshot : uuidv4(), // new snapshot name. ATTN! All snapshot names should be SQL-safe, so can be used in queries w/o escaping!
+                                                                    1 === isOverwrite && rows[0].format === format ? null : rows[0].snapshot + '.' + rows[0].format, // existing filename (full filename with extension)
                                                                     isOverwrite);
 
                                                         }else { // no record? create a new one
