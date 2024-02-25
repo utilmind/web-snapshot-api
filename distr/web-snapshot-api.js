@@ -1,4 +1,10 @@
-/* TODO:
+/**
+    UtilMind Web Snapshot Maker REST API
+
+    @see       https://github.com/utilmind/web-snapshot-api The GitHub project
+    @author    Oleksii Kuznietsov (utilmind) <utilmind@gmail.com>
+
+    TODO:
         1. Authentication. Process reqests with valid public key.
         2. Send real link to the temporary file.
         3. Delete outdated (unpaid?) snapshot files.
@@ -6,7 +12,7 @@
 
         *. Don't take screenshot of the same site more often than once per 1 day. Or use something like 'force' or 'nocache' parameters.
 
-*/
+**/
 // CONFIGURATION
 // -------------
 const appName = 'UtilMind Web Snapshot Maker',
