@@ -89,7 +89,7 @@ const appName = 'UtilMind Web Snapshot Maker',
 
     getIp = req => { // Alternatively try module 'request-ip'. But this should work already. Also we have X-Real-IP header in Nginx config.
         const forwardedIps = req.headers['x-forwarded-for'];
-        return forwardedIps && (-1 !== forwardedIps.indexOf(',')) ? forwardedIps.split(',')[0].trim() : req.socket.remoteAddress;
+        return forwardedIps && (-1 !== forwardedIps.indexOf(',')) ? forwardedIps.split(',')[0] : req.socket.remoteAddress;
     },
 
     // on Success: .then(clientId, dbConnection)
